@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Health Centre</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body class="muted-background">
+  <header class="site-header shell-wide">
+    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
+    <div class="header-actions">
+      <span class="user-chip"><%= currentUser.name %> · <%= currentUser.role %></span>
+      <form method="post" action="/auth/logout">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="link-button" type="submit">Sign out</button>
+      </form>
+    </div>
+  </header>
+
+  <main class="shell shell-wide">
+    <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
+    <section class="dashboard-heading">
+      <div>
+        <p class="eyebrow">Operational view</p>
+        <h1><%= currentUser.role === 'patient' ? 'Your appointments' : currentUser.role === 'doctor' ? 'Assigned care' : 'Scheduling desk' %></h1>
+      </div>
+      <% if (currentUser.role === 'patient') { %><a class="button primary" href="/appointments/new">New appointment</a><% } %>
+    </section>
+
+    <section class="stats-grid" aria-label="Appointment summary">
+      <div class="stat-card"><span>Visible appointments</span><strong><%= appointments.length %></strong></div>
+      <div class="stat-card"><span>Requested</span><strong><%= appointments.filter((item) => item.status === 'requested').length %></strong></div>
+      <div class="stat-card"><span>Confirmed</span><strong><%= appointments.filter((item) => item.status === 'confirmed').length %></strong></div>
+      <div class="stat-card"><span>Completed</span><strong><%= appointments.filter((item) => item.status === 'completed').length %></strong></div>
+    </section>
+
+    <section class="panel">
+      <div class="section-heading"><h2>Appointments</h2><span class="muted"><%= appointments.length %> records</span></div>
+      <% if (!appointments.length) { %>
+        <div class="empty-state"><strong>No appointments yet.</strong><span>The empty state is deliberate: no fabricated dashboard numbers.</span></div>
+      <% } else { %>
+        <div class="table-wrap">
+          <table>
+            <caption class="sr-only">Appointments visible to the current user</caption>
+            <thead><tr><th>Patient / ID</th><th>Status</th><th>Requested</th><th>Scheduled</th><th>Action</th></tr></thead>
+            <tbody>
+              <% appointments.forEach((item) => { %>
+                <tr>
+                  <td><strong><%= currentUser.role === 'patient' ? 'You' : item.patientId %></strong><small><%= item.id %></small></td>
+                  <td><span class="status status-<%= item.status %>"><%= item.status %></span></td>
+                  <td><%= new Date(item.requestedAt).toLocaleString() %></td>
+                  <td><%= item.scheduledFor ? new Date(item.scheduledFor).toLocaleString() : 'Not scheduled' %></td>
+                  <td>
+                    <% if (currentUser.role === 'admin' && item.status === 'requested') { %>
+                      <form method="post" action="/admin/appointments/<%= item.id %>/schedule" class="inline-form">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <label class="sr-only" for="doctor-<%= item.id %>">Doctor</label>
+                        <select id="doctor-<%= item.id %>" name="doctorId" required><option value="">Doctor</option><% doctors.forEach((doctor) => { %><option value="<%= doctor.id %>"><%= doctor.name %></option><% }) %></select>
+                        <label class="sr-only" for="time-<%= item.id %>">Scheduled time</label>
+                        <input id="time-<%= item.id %>" name="scheduledFor" type="datetime-local" required>
+                        <button class="button small-button primary" type="submit">Schedule</button>
+                      </form>
+                    <% } else if (currentUser.role === 'doctor' && item.status === 'confirmed') { %>
+                      <form method="post" action="/doctor/appointments/<%= item.id %>/complete" class="inline-form completion-form">
+                        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                        <input name="test" placeholder="Test" maxlength="500" aria-label="Test">
+                        <input name="medicine" placeholder="Medicine" maxlength="2000" aria-label="Medicine">
+                        <input name="advice" placeholder="Advice" maxlength="2000" aria-label="Advice">
+                        <button class="button small-button primary" type="submit">Complete</button>
+                      </form>
+                    <% } else if (currentUser.role === 'patient' && ['requested', 'confirmed'].includes(item.status)) { %>
+                      <form method="post" action="/appointments/<%= item.id %>/cancel"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button danger" type="submit">Cancel</button></form>
+                    <% } else { %><span class="muted">No action</span><% } %>
+                  </td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+    </section>
+
+    <% if (currentUser.role === 'admin') { %>
+      <section class="panel">
+        <div class="section-heading"><h2>Notification outbox</h2><span class="muted">Durable side-effect ledger</span></div>
+        <% if (!outbox.length) { %><div class="empty-state"><span>No events recorded.</span></div><% } else { %>
+          <div class="event-list"><% outbox.forEach((event) => { %><div class="event-row"><code><%= event.eventId %></code><span><%= event.eventType %></span><span class="status status-<%= event.status %>"><%= event.status %></span><span><%= event.attempts %> attempt(s)</span></div><% }) %></div>
+        <% } %>
+      </section>
+    <% } %>
+  </main>
+</body>
+</html>
