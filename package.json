@@ -12,7 +12,9 @@
     "lint": "eslint src test scripts",
     "check": "npm run lint && npm test",
     "demo": "node scripts/demo.js",
-    "benchmark": "node scripts/benchmark.js"
+    "benchmark": "node scripts/benchmark.js",
+    "benchmark:http": "node scripts/http-benchmark.js",
+    "migrate:legacy": "node scripts/migrate-legacy-json.js"
   },
   "engines": {
     "node": ">=18.12"

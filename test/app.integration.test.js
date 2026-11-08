@@ -107,6 +107,31 @@ test('database uniqueness prevents double booking of a doctor slot', async () =>
   assert.equal(system.appointments.listForActor({ id: 1, role: 'admin' }).filter((item) => item.status === 'confirmed').length, 1);
 });
 
+test('concurrent administrators cannot confirm the same doctor slot twice', async () => {
+  const system = createTestSystem();
+  const patient = request.agent(system.app);
+  const firstAdmin = request.agent(system.app);
+  const secondAdmin = request.agent(system.app);
+  const patientCsrf = await login(patient, 'patient@health.local');
+  const firstAdminCsrf = await login(firstAdmin, 'admin@health.local');
+  const secondAdminCsrf = await login(secondAdmin, 'admin@health.local');
+  const booking = { phone: '9508532340', age: 19, symptoms: 'Synthetic scheduling test', daysWithSymptoms: 1 };
+  const first = await patient.post('/api/appointments').set('x-csrf-token', patientCsrf).set('idempotency-key', 'concurrent-slot-1').send(booking);
+  const second = await patient.post('/api/appointments').set('x-csrf-token', patientCsrf).set('idempotency-key', 'concurrent-slot-2').send({ ...booking, symptoms: 'Second synthetic booking' });
+  const doctorId = system.appointments.listDoctors()[0].id;
+  const scheduledFor = '2030-01-02T10:00:00.000Z';
+
+  const responses = await Promise.all([
+    firstAdmin.post(`/api/admin/appointments/${first.body.appointment.id}/schedule`).set('x-csrf-token', firstAdminCsrf).send({ doctorId, scheduledFor }),
+    secondAdmin.post(`/api/admin/appointments/${second.body.appointment.id}/schedule`).set('x-csrf-token', secondAdminCsrf).send({ doctorId, scheduledFor }),
+  ]);
+
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409]);
+  const appointments = system.appointments.listForActor({ id: 1, role: 'admin' });
+  assert.equal(appointments.filter((appointment) => appointment.status === 'confirmed').length, 1);
+  assert.equal(appointments.filter((appointment) => appointment.status === 'requested').length, 1);
+});
+
 test('ownership and role boundaries reject unauthorized mutations', async () => {
   const system = createTestSystem();
   const patient = request.agent(system.app);
@@ -141,10 +166,13 @@ test('outbox processing is resumable and does not redeliver delivered events', a
   const patient = request.agent(system.app);
   const csrf = await login(patient, 'patient@health.local');
   await patient.post('/api/appointments').set('x-csrf-token', csrf).set('idempotency-key', 'outbox-1').send({ phone: '9508532340', age: 19, symptoms: 'Persistent fever', daysWithSymptoms: 3 });
-  system.db.prepare("UPDATE outbox_events SET status = 'processing', available_at = '2000-01-01T00:00:00.000Z'").run();
+  system.db.prepare("UPDATE outbox_events SET status = 'processing', attempts = 1, available_at = '2999-01-01T00:00:00.000Z'").run();
+  assert.equal(system.appointments.processOutboxOnce(), null);
+  system.db.prepare("UPDATE outbox_events SET available_at = '2000-01-01T00:00:00.000Z' WHERE status = 'processing'").run();
   const first = system.appointments.processOutboxOnce();
   assert.ok(first);
   assert.equal(system.appointments.listOutbox()[0].status, 'delivered');
+  assert.equal(system.appointments.listOutbox()[0].attempts, 2);
   assert.equal(system.appointments.processOutboxOnce(), null);
   system.close();
   openSystems.delete(system);

@@ -115,6 +115,18 @@ BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=5 npm run benchmark
 
 The original implementation has no runnable benchmark baseline: its test script exits 1 and the legacy runtime depends on undeclared modules and a live MongoDB instance. The benchmark therefore reports only measurements actually produced by the rebuilt implementation and states that limitation rather than inventing a comparison.
 
+`npm run benchmark:http` measures authenticated appointment requests through the Express HTTP stack against temporary file-backed SQLite databases. See [`docs/benchmark-report.md`](docs/benchmark-report.md) for the captured local results and limitations.
+
+## Legacy JSON migration
+
+The legacy appointment export can be reviewed with a read-only dry run:
+
+```bash
+npm run migrate:legacy -- --source=appointmentsdatabase.json --db=data/health-centre.sqlite
+```
+
+The importer never reads the legacy login files or migrates passwords/accounts. It considers only unscheduled appointments whose email matches an existing patient account in the target database. Scheduled rows need a verified doctor/status mapping and are left for manual review. The source file is not changed. See [`docs/legacy-json-migration.md`](docs/legacy-json-migration.md) before using `--apply`.
+
 ## Operational endpoints
 
 - `GET /healthz` — process liveness.

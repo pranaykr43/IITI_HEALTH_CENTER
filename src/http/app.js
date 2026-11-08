@@ -43,7 +43,12 @@ function createApp(options = {}) {
     });
     next();
   });
-  app.use(rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: 'draft-7', legacyHeaders: false }));
+  app.use(rateLimit({
+    windowMs: 60_000,
+    limit: options.rateLimitLimit ?? 120,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+  }));
   app.use((req, res, next) => {
     req.session = auth.getSession(req.cookies.health_session);
     next();
