@@ -24,11 +24,11 @@ async function main() {
   const doctorId = system.appointments.listDoctors()[0].id;
   const schedule = await admin.post(`/api/admin/appointments/${first.body.appointment.id}/schedule`).set('x-csrf-token', adminLogin.body.csrfToken).send({ doctorId, scheduledFor: '2030-01-01T10:00:00.000Z' });
   const collision = await admin.post(`/api/admin/appointments/${second.body.appointment.id}/schedule`).set('x-csrf-token', adminLogin.body.csrfToken).send({ doctorId, scheduledFor: '2030-01-01T10:00:00.000Z' });
-  const delivered = [];
-  let event = system.appointments.processOutboxOnce();
+  const processed = [];
+  const adapter = { async deliver(event) { processed.push(event.eventId); } };
+  let event = await system.appointments.processOutboxOnce({ adapter });
   while (event) {
-    delivered.push(event.eventId);
-    event = system.appointments.processOutboxOnce();
+    event = await system.appointments.processOutboxOnce({ adapter });
   }
 
   console.log(JSON.stringify({
@@ -36,7 +36,7 @@ async function main() {
     firstScheduleStatus: schedule.status,
     duplicateSlotStatus: collision.status,
     persistedAppointments: system.appointments.countAppointments(),
-    deliveredOutboxEvents: delivered.length,
+    outboxEventsProcessedBySyntheticAdapter: processed.length,
   }, null, 2));
   system.close();
 }

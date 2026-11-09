@@ -75,13 +75,14 @@ td strong, td small { display: block; }
 .status-requested { color: #854d0e; background: #fef3c7; }
 .status-confirmed { color: #075985; background: #e0f2fe; }
 .status-completed, .status-delivered { color: #065f46; background: #d1fae5; }
-.status-cancelled, .status-rejected, .status-failed { color: #991b1b; background: #fee2e2; }
+.status-cancelled, .status-rejected, .status-failed, .status-dead { color: #991b1b; background: #fee2e2; }
 .status-pending, .status-processing { color: #5b21b6; background: #ede9fe; }
 .inline-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: .4rem; min-width: 430px; }
 .completion-form { grid-template-columns: repeat(3, minmax(120px, 1fr)) auto; }
 .empty-state { display: grid; gap: .25rem; padding: 2rem; border: 1px dashed #b8c4d3; border-radius: 12px; color: var(--muted); text-align: center; }
 .event-list { display: grid; gap: .6rem; }
 .event-row { display: grid; grid-template-columns: 1.4fr 1fr auto auto; gap: .75rem; align-items: center; padding: .75rem; border: 1px solid var(--line); border-radius: 10px; font-size: .9rem; }
+.event-error { grid-column: 1 / -1; color: var(--muted); overflow-wrap: anywhere; }
 .link-button { color: var(--primary-dark); background: transparent; border: 0; padding: .35rem 0; font: inherit; font-weight: 700; cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @media (max-width: 800px) { .hero-grid { grid-template-columns: 1fr; padding: 2rem 0; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .dashboard-heading { align-items: start; flex-direction: column; } }

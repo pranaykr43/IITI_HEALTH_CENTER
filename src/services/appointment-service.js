@@ -11,9 +11,32 @@ const {
   assertTransition,
   normalizeBooking,
 } = require('../domain/appointments');
+const { createConsoleNotificationAdapter } = require('../notifications/console-adapter');
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function isoAt(milliseconds) {
+  return new Date(milliseconds).toISOString();
+}
+
+function validateWorkerOptions({ leaseMs, maxAttempts, baseDelayMs, maxDelayMs }) {
+  if (!Number.isInteger(leaseMs) || leaseMs < 1) throw new TypeError('leaseMs must be a positive integer');
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new TypeError('maxAttempts must be a positive integer');
+  if (!Number.isInteger(baseDelayMs) || baseDelayMs < 1) throw new TypeError('baseDelayMs must be a positive integer');
+  if (!Number.isInteger(maxDelayMs) || maxDelayMs < baseDelayMs) throw new TypeError('maxDelayMs must be an integer >= baseDelayMs');
+}
+
+function retryDelayMs(attempt, baseDelayMs, maxDelayMs) {
+  return Math.min(maxDelayMs, baseDelayMs * (2 ** Math.min(attempt - 1, 30)));
+}
+
+function safeErrorCode(error) {
+  const value = error?.code || error?.name;
+  return typeof value === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(value)
+    ? value
+    : 'notification_delivery_failed';
 }
 
 function hashPayload(payload) {
@@ -209,26 +232,130 @@ function createAppointmentService(db) {
   }
 
   function listOutbox() {
-    return db.prepare('SELECT event_id AS eventId, event_type AS eventType, aggregate_id AS aggregateId, status, attempts FROM outbox_events ORDER BY id').all();
+    return db.prepare(`
+      SELECT event_id AS eventId, event_type AS eventType, aggregate_id AS aggregateId,
+             status, attempts, available_at AS availableAt, last_error AS lastError,
+             failed_at AS failedAt
+      FROM outbox_events ORDER BY id
+    `).all();
   }
 
-  function processOutboxOnce() {
-    const claimUntil = new Date(Date.now() + 30_000).toISOString();
-    const event = db.transaction(() => {
+  function claimOutboxEvent({ nowMs, leaseMs, maxAttempts }) {
+    return db.transaction(() => {
+      const now = isoAt(nowMs);
+      db.prepare(`
+        UPDATE outbox_events
+        SET status = 'dead', failed_at = COALESCE(failed_at, ?),
+            claim_token = NULL, lease_expires_at = NULL,
+            last_error = COALESCE(last_error, 'maximum_attempts_reached')
+        WHERE attempts >= ? AND (
+          (status IN ('pending', 'failed') AND available_at <= ?)
+          OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
+        )
+      `).run(now, maxAttempts, now, now);
+
       const candidate = db.prepare(`
         SELECT * FROM outbox_events
-        WHERE (status IN ('pending', 'failed') OR status = 'processing') AND available_at <= ?
+        WHERE attempts < ? AND (
+          (status IN ('pending', 'failed') AND available_at <= ?)
+          OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
+        )
         ORDER BY id LIMIT 1
-      `).get(nowIso());
+      `).get(maxAttempts, now, now);
       if (!candidate) return null;
-      db.prepare('UPDATE outbox_events SET status = \'processing\', attempts = attempts + 1, available_at = ? WHERE id = ? AND status IN (\'pending\', \'failed\', \'processing\')').run(claimUntil, candidate.id);
-      return candidate;
-    })();
+      const claimToken = crypto.randomUUID();
+      const leaseExpiresAt = isoAt(nowMs + leaseMs);
+      const updated = db.prepare(`
+        UPDATE outbox_events
+        SET status = 'processing', attempts = attempts + 1,
+            claim_token = ?, lease_expires_at = ?
+        WHERE id = ? AND attempts = ? AND (
+          (status IN ('pending', 'failed') AND available_at <= ?)
+          OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
+        )
+      `).run(claimToken, leaseExpiresAt, candidate.id, candidate.attempts, now, now);
+      if (updated.changes !== 1) return null;
+      return {
+        id: candidate.id,
+        claimToken,
+        leaseExpiresAt,
+        attempt: candidate.attempts + 1,
+        event: {
+          eventId: candidate.event_id,
+          eventType: candidate.event_type,
+          aggregateId: candidate.aggregate_id,
+          payload: JSON.parse(candidate.payload_json),
+          attempt: candidate.attempts + 1,
+        },
+      };
+    }).immediate();
+  }
 
-    if (!event) return null;
-    const deliveredAt = nowIso();
-    db.prepare('UPDATE outbox_events SET status = \'delivered\', delivered_at = ? WHERE id = ? AND status = \'processing\'').run(deliveredAt, event.id);
-    return { eventId: event.event_id, eventType: event.event_type, deliveredAt };
+  function completeOutboxClaim(claim, nowMs) {
+    const deliveredAt = isoAt(nowMs);
+    const result = db.prepare(`
+      UPDATE outbox_events
+      SET status = 'delivered', delivered_at = ?, claim_token = NULL,
+          lease_expires_at = NULL, last_error = NULL, failed_at = NULL
+      WHERE id = ? AND status = 'processing' AND claim_token = ? AND lease_expires_at > ?
+    `).run(deliveredAt, claim.id, claim.claimToken, deliveredAt);
+    if (result.changes !== 1) return { status: 'stale', eventId: claim.event.eventId };
+    return { status: 'delivered', eventId: claim.event.eventId, deliveredAt, attempt: claim.attempt };
+  }
+
+  function failOutboxClaim(claim, error, { nowMs, maxAttempts, baseDelayMs, maxDelayMs }) {
+    const failedAt = isoAt(nowMs);
+    const terminal = claim.attempt >= maxAttempts;
+    const nextAvailableAt = terminal
+      ? failedAt
+      : isoAt(nowMs + retryDelayMs(claim.attempt, baseDelayMs, maxDelayMs));
+    const status = terminal ? 'dead' : 'failed';
+    const result = db.prepare(`
+      UPDATE outbox_events
+      SET status = ?, available_at = ?, last_error = ?,
+          failed_at = CASE WHEN ? = 'dead' THEN ? ELSE NULL END,
+          claim_token = NULL, lease_expires_at = NULL
+      WHERE id = ? AND status = 'processing' AND claim_token = ? AND lease_expires_at > ?
+    `).run(status, nextAvailableAt, safeErrorCode(error), status, failedAt, claim.id, claim.claimToken, failedAt);
+    if (result.changes !== 1) return { status: 'stale', eventId: claim.event.eventId, attempt: claim.attempt };
+    return {
+      status,
+      eventId: claim.event.eventId,
+      attempt: claim.attempt,
+      availableAt: nextAvailableAt,
+      lastError: safeErrorCode(error),
+    };
+  }
+
+  async function processOutboxOnce(options = {}) {
+    const {
+      adapter = createConsoleNotificationAdapter(),
+      now = Date.now,
+      leaseMs = 30_000,
+      maxAttempts = 5,
+      baseDelayMs = 1_000,
+      maxDelayMs = 60_000,
+    } = options;
+    validateWorkerOptions({ leaseMs, maxAttempts, baseDelayMs, maxDelayMs });
+    if (typeof now !== 'function') throw new TypeError('now must be a function');
+    const deliver = typeof adapter === 'function' ? adapter : adapter?.deliver;
+    if (typeof deliver !== 'function') throw new TypeError('adapter must be a function or provide deliver(event)');
+
+    const claimedAt = now();
+    const claim = claimOutboxEvent({ nowMs: claimedAt, leaseMs, maxAttempts });
+    if (!claim) return null;
+
+    try {
+      await deliver.call(adapter, claim.event);
+    } catch (error) {
+      return failOutboxClaim(claim, error, {
+        nowMs: now(),
+        maxAttempts,
+        baseDelayMs,
+        maxDelayMs,
+      });
+    }
+    return completeOutboxClaim(claim, now());
   }
 
   function countAppointments() {

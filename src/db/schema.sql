@@ -58,11 +58,15 @@ CREATE TABLE IF NOT EXISTS outbox_events (
   event_type TEXT NOT NULL,
   aggregate_id TEXT NOT NULL,
   payload_json TEXT NOT NULL,
-  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'delivered', 'failed')) DEFAULT 'pending',
+  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'delivered', 'failed', 'dead')) DEFAULT 'pending',
   attempts INTEGER NOT NULL DEFAULT 0,
   available_at TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  delivered_at TEXT
+  delivered_at TEXT,
+  claim_token TEXT,
+  lease_expires_at TEXT,
+  last_error TEXT,
+  failed_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_outbox_available ON outbox_events(status, available_at, id);

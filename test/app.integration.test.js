@@ -161,19 +161,21 @@ test('doctor completion is one transaction and records prescription data', async
   assert.equal(system.appointments.listOutbox().filter((event) => event.aggregateId === created.body.appointment.id).length, 3);
 });
 
-test('outbox processing is resumable and does not redeliver delivered events', async () => {
+test('outbox processing reclaims expired leases and does not repeat delivered events', async () => {
   const system = createTestSystem();
   const patient = request.agent(system.app);
   const csrf = await login(patient, 'patient@health.local');
   await patient.post('/api/appointments').set('x-csrf-token', csrf).set('idempotency-key', 'outbox-1').send({ phone: '9508532340', age: 19, symptoms: 'Persistent fever', daysWithSymptoms: 3 });
-  system.db.prepare("UPDATE outbox_events SET status = 'processing', attempts = 1, available_at = '2999-01-01T00:00:00.000Z'").run();
-  assert.equal(system.appointments.processOutboxOnce(), null);
-  system.db.prepare("UPDATE outbox_events SET available_at = '2000-01-01T00:00:00.000Z' WHERE status = 'processing'").run();
-  const first = system.appointments.processOutboxOnce();
-  assert.ok(first);
+  system.db.prepare("UPDATE outbox_events SET status = 'processing', attempts = 1, claim_token = 'simulated-worker', lease_expires_at = '2999-01-01T00:00:00.000Z'").run();
+  const adapter = { async deliver() {} };
+  const clock = () => Date.parse('2026-11-09T00:00:00.000Z');
+  assert.equal(await system.appointments.processOutboxOnce({ adapter, now: clock }), null);
+  system.db.prepare("UPDATE outbox_events SET lease_expires_at = '2000-01-01T00:00:00.000Z' WHERE status = 'processing'").run();
+  const first = await system.appointments.processOutboxOnce({ adapter, now: clock });
+  assert.equal(first.status, 'delivered');
   assert.equal(system.appointments.listOutbox()[0].status, 'delivered');
   assert.equal(system.appointments.listOutbox()[0].attempts, 2);
-  assert.equal(system.appointments.processOutboxOnce(), null);
+  assert.equal(await system.appointments.processOutboxOnce({ adapter, now: clock }), null);
   system.close();
   openSystems.delete(system);
 });

@@ -25,3 +25,5 @@
 - Added `npm run benchmark:http` for authenticated HTTP requests through Express using fresh temporary file-backed SQLite databases. Captured three 1,000-request runs; results and limitations are in `docs/benchmark-report.md`.
 - Reran `npm run benchmark` with three 1,000-appointment runs. The prior ignored raw output was preserved locally before updating `bench/results/latest.json`.
 - Added a dry-run-first legacy appointment JSON importer. It skips scheduled rows and unmatched or invalid patients, never reads legacy password files, and replays safely by source key. A local read-only dry run found 12 rows: 9 require manual review, 3 have no target patient, and 0 are eligible; no rows were imported.
+- Added a separate notification worker with an injectable local console adapter, immediate SQLite claim transactions, lease tokens, stale-worker fencing, bounded exponential retries, and terminal `dead` handling.
+- Added a versioned outbox migration, failure/recovery/concurrency tests, worker graceful shutdown, and operational guidance. `npm run lint`, `npm test`, `npm run check`, `npm run demo`, and `npm audit --omit=dev` pass; the audit reports 0 vulnerabilities.

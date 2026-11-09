@@ -14,7 +14,8 @@
     "demo": "node scripts/demo.js",
     "benchmark": "node scripts/benchmark.js",
     "benchmark:http": "node scripts/http-benchmark.js",
-    "migrate:legacy": "node scripts/migrate-legacy-json.js"
+    "migrate:legacy": "node scripts/migrate-legacy-json.js",
+    "worker:notifications": "node src/workers/run-notification-worker.js"
   },
   "engines": {
     "node": ">=18.12"

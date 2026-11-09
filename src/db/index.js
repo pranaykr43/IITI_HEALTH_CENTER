@@ -3,6 +3,7 @@ const path = require('node:path');
 const Database = require('better-sqlite3');
 
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+const OUTBOX_RELIABILITY_MIGRATION = 1;
 
 function migrateLegacyIdempotencyTable(db) {
   const columns = db.pragma('table_info(idempotency_keys)');
@@ -28,6 +29,61 @@ function migrateLegacyIdempotencyTable(db) {
   })();
 }
 
+function migrateOutboxReliability(db) {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= OUTBOX_RELIABILITY_MIGRATION) return;
+
+  const columns = new Set(db.pragma('table_info(outbox_events)').map((column) => column.name));
+  const definition = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'outbox_events'").get()?.sql || '';
+  const requiredColumns = ['claim_token', 'lease_expires_at', 'last_error', 'failed_at'];
+  const needsRebuild = requiredColumns.some((column) => !columns.has(column)) || !definition.includes("'dead'");
+
+  if (needsRebuild) {
+    db.transaction(() => {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_outbox_available;
+        ALTER TABLE outbox_events RENAME TO outbox_events_before_reliability;
+        CREATE TABLE outbox_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id TEXT NOT NULL UNIQUE,
+          event_type TEXT NOT NULL,
+          aggregate_id TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'delivered', 'failed', 'dead')) DEFAULT 'pending',
+          attempts INTEGER NOT NULL DEFAULT 0,
+          available_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          delivered_at TEXT,
+          claim_token TEXT,
+          lease_expires_at TEXT,
+          last_error TEXT,
+          failed_at TEXT
+        );
+      `);
+
+      const optionalColumn = (name, fallback = 'NULL') => (columns.has(name) ? name : fallback);
+      const leaseExpression = columns.has('lease_expires_at')
+        ? 'lease_expires_at'
+        : "CASE WHEN status = 'processing' THEN available_at ELSE NULL END";
+      db.exec(`
+        INSERT INTO outbox_events (
+          id, event_id, event_type, aggregate_id, payload_json, status, attempts,
+          available_at, created_at, delivered_at, claim_token, lease_expires_at, last_error, failed_at
+        )
+        SELECT id, event_id, event_type, aggregate_id, payload_json, status, attempts,
+          available_at, created_at, ${optionalColumn('delivered_at')},
+          ${optionalColumn('claim_token')}, ${leaseExpression},
+          ${optionalColumn('last_error')}, ${optionalColumn('failed_at')}
+        FROM outbox_events_before_reliability;
+        DROP TABLE outbox_events_before_reliability;
+        CREATE INDEX idx_outbox_available ON outbox_events(status, available_at, id);
+      `);
+    })();
+  }
+
+  db.pragma(`user_version = ${OUTBOX_RELIABILITY_MIGRATION}`);
+}
+
 function openDatabase(dbPath) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -42,6 +98,7 @@ function openDatabase(dbPath) {
   }
   db.exec(schema);
   migrateLegacyIdempotencyTable(db);
+  migrateOutboxReliability(db);
   return db;
 }
 
@@ -49,4 +106,4 @@ function closeDatabase(db) {
   if (db && db.open) db.close();
 }
 
-module.exports = { openDatabase, closeDatabase };
+module.exports = { openDatabase, closeDatabase, migrateOutboxReliability };

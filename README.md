@@ -9,6 +9,8 @@ This project is an engineering rebuild of a student health-centre appointment pr
 5. The assigned doctor completes the appointment and records a prescription.
 6. Durable outbox events and audit entries are written with the business change.
 
+The standalone `npm run worker:notifications` process claims outbox events with expiring leases, retries transient adapter errors with capped exponential backoff, and marks exhausted events `dead`. Its default adapter writes a local console summary only; no real email is sent.
+
 This is a local-first engineering showcase, not a production medical-record system. It intentionally does not claim HIPAA compliance, multi-region durability, real email delivery, or exactly-once external side effects.
 
 ## Why the naive version fails
@@ -99,7 +101,7 @@ The demo runs entirely in memory and prints evidence for:
 - a successful schedule,
 - a rejected duplicate doctor/time slot,
 - the number of persisted appointments, and
-- the number of outbox events drained.
+- the number of outbox events processed by a synthetic demo adapter.
 
 ## Benchmark
 

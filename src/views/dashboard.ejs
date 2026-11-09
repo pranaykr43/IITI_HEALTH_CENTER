@@ -85,7 +85,7 @@
       <section class="panel">
         <div class="section-heading"><h2>Notification outbox</h2><span class="muted">Durable side-effect ledger</span></div>
         <% if (!outbox.length) { %><div class="empty-state"><span>No events recorded.</span></div><% } else { %>
-          <div class="event-list"><% outbox.forEach((event) => { %><div class="event-row"><code><%= event.eventId %></code><span><%= event.eventType %></span><span class="status status-<%= event.status %>"><%= event.status %></span><span><%= event.attempts %> attempt(s)</span></div><% }) %></div>
+          <div class="event-list"><% outbox.forEach((event) => { %><div class="event-row"><code><%= event.eventId %></code><span><%= event.eventType %></span><span class="status status-<%= event.status %>"><%= event.status %></span><span><%= event.attempts %> attempt(s)</span><% if (event.lastError) { %><small class="event-error">Last adapter error code: <code><%= event.lastError %></code></small><% } %></div><% }) %></div>
         <% } %>
       </section>
     <% } %>
