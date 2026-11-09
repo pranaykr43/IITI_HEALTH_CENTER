@@ -1,5 +1,7 @@
 # Engineering audit
 
+> Historical baseline: this audit records the original prototype before the rebuild. The active application now lives under `src/`; see [`current-engineering-review.md`](current-engineering-review.md) for the current-state audit and remaining risks.
+
 ## Executive verdict
 
 This repository is a student prototype, not a deployable health-centre system. Its strongest idea is the appointment workflow, but the implementation currently combines a copied template-heavy UI with an unbounded Express router, direct database calls, plaintext credentials, and no meaningful automated checks. The project cannot honestly claim the reliability, security, or MongoDB architecture described in its README.

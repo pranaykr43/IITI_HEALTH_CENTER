@@ -10,6 +10,8 @@ npm start
 
 The default database is `data/health-centre.sqlite`. The database directory is intentionally ignored because it contains local state and session records.
 
+The checked-in seed accounts are for local development only. Demo seeding is rejected in production, and production startup requires secure cookies. Provision real accounts with a reviewed operator process; this project does not include password reset or MFA.
+
 ## Health checks
 
 - `GET /healthz` confirms the process is responding.

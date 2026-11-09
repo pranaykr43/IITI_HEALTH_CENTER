@@ -4,6 +4,9 @@ const { loadConfig } = require('./config');
 const { seedDemoData } = require('./seed');
 
 const config = loadConfig();
+if (config.nodeEnv === 'production' && process.env.SEED_ON_START === 'true') {
+  throw new Error('SEED_ON_START is disabled in production; provision accounts through an approved process');
+}
 const system = createApp({ config });
 if (process.env.SEED_ON_START === 'true') seedDemoData({ db: system.db, config });
 

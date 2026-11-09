@@ -20,6 +20,7 @@ The legacy code sent email before inserting the appointment, compared raw passwo
 The corrected design is documented in:
 
 - [`docs/engineering-audit.md`](docs/engineering-audit.md) — evidence-backed audit of the original project.
+- [`docs/current-engineering-review.md`](docs/current-engineering-review.md) — current-state audit, ratings, residual risks, and phased next work.
 - [`docs/technical-design.md`](docs/technical-design.md) — active architecture, invariants, trade-offs, and acceptance criteria.
 - [`docs/failure-analysis.md`](docs/failure-analysis.md) — failure scenarios and honest guarantees.
 - [`docs/architecture.mmd`](docs/architecture.mmd) — Mermaid component diagram.
@@ -33,7 +34,7 @@ flowchart LR
   Domain[Appointment service\nstate machine + idempotency]
   DB[(SQLite\nFKs, CHECKs, WAL, unique slot index)]
   Outbox[Transactional outbox]
-  Worker[Retryable notification boundary]
+  Worker[Standalone retrying notification worker]
   Browser --> HTTP --> Domain --> DB
   DB --> Outbox --> Worker
 ```
@@ -79,6 +80,8 @@ COOKIE_SECURE=false
 
 For production-like HTTPS, set `COOKIE_SECURE=true` and terminate TLS in front of the process. Do not use the demo password outside a disposable local environment.
 
+`npm run seed` is disabled when `NODE_ENV=production`; provision real accounts through an approved process. Production configuration rejects insecure cookies and invalid `COOKIE_SECURE` values. Run the notification worker separately with `npm run worker:notifications` when exercising the local outbox; its default adapter writes console summaries only.
+
 ## Test and quality checks
 
 ```bash
@@ -87,7 +90,7 @@ npm test
 npm run check
 ```
 
-The tests cover the state machine, input boundaries, authentication, CSRF, role boundaries, idempotent retries, durable outbox creation, duplicate-slot rejection, and atomic doctor completion.
+The tests cover the state machine, input boundaries, authentication, CSRF, role boundaries, idempotent retries, durable outbox creation, duplicate-slot rejection, atomic doctor completion, worker failures/recovery/fencing, and database migration.
 
 ## Reproducible demonstration
 

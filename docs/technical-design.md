@@ -36,6 +36,7 @@ flowchart LR
 ## Important invariants
 
 - A password is stored only as a bcrypt hash.
+- Production requires secure session cookies; invalid `COOKIE_SECURE` values are rejected, and demo-account seeding is disabled in production.
 - A patient can create an appointment only while authenticated as that patient.
 - A client retry with the same idempotency key and identical payload returns the original appointment; it creates no second row.
 - Reusing an idempotency key with a different payload is rejected.
