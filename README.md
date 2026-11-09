@@ -13,6 +13,10 @@ The standalone `npm run worker:notifications` process claims outbox events with 
 
 Browser regression coverage uses an isolated temporary SQLite database and synthetic accounts. Run `npm run test:e2e` for the Chromium suite, `npm run test:e2e:headed` to watch it, or `npm run test:e2e:report` to open the last HTML report. The test server uses a dedicated local port and never starts the notification worker.
 
+Account management is operator-driven: an active administrator provisions patient and doctor accounts, can create a separately confirmed administrator, and can disable/reactivate accounts. Disablement revokes sessions immediately and blocks new sign-ins. Password recovery uses expiring single-use hashed tokens and the default local adapter deliberately does not deliver a link. An injectable adapter exists for tests/development; production rejects custom adapters until a provider is reviewed. Set `PUBLIC_BASE_URL` to the HTTPS application origin when configuring a future production delivery adapter.
+
+Administrators can inspect notification queue counts, pending age, attempts, worker heartbeat and recent delivery/failure activity. Manual redrive is CSRF-protected, audited with operator and reason, bounded to three redrives, and preserves the event ID and previous attempts. The local console adapter does not send email.
+
 This is a local-first engineering showcase, not a production medical-record system. It intentionally does not claim HIPAA compliance, multi-region durability, real email delivery, or exactly-once external side effects.
 
 ## Why the naive version fails
@@ -84,15 +88,34 @@ For production-like HTTPS, set `COOKIE_SECURE=true` and terminate TLS in front o
 
 `npm run seed` is disabled when `NODE_ENV=production`; provision real accounts through an approved process. Production configuration rejects insecure cookies and invalid `COOKIE_SECURE` values. Run the notification worker separately with `npm run worker:notifications` when exercising the local outbox; its default adapter writes console summaries only.
 
+### Role workflows
+
+- **Patient:** run `npm run seed`, use the patient credentials printed by that command, request appointments, and review scheduling/status and visit summaries from the dashboard.
+- **Administrator:** use the seeded administrator credentials locally to schedule requested appointments, provision patient/doctor accounts, separately confirm administrator creation, manage account status, inspect the queue, and redrive dead events with a reason.
+- **Doctor:** use the seeded doctor credentials locally to view assigned appointments and record the visit summary. The dashboard does not expose other doctors' appointments.
+- **Notification operator:** run `npm run worker:notifications` in a second terminal with the same `HEALTH_DB_PATH`; monitor the administrator queue view and worker heartbeat. Delivery is local console output only.
+
+Seed credentials are generated for local demo use and printed at runtime; they are not checked into source. Replace them with newly provisioned accounts before sharing a demo environment.
+
 ## Test and quality checks
 
 ```bash
 npm run lint
 npm test
 npm run check
+npm run test:e2e
+npm audit --omit=dev
 ```
 
 The tests cover the state machine, input boundaries, authentication, CSRF, role boundaries, idempotent retries, durable outbox creation, duplicate-slot rejection, atomic doctor completion, worker failures/recovery/fencing, database migration, and browser-based appointment flows, responsive layout, keyboard access, and axe checks.
+
+Playwright runs Chromium, Firefox, and WebKit projects. Install their binaries with `npx playwright install chromium firefox webkit` before local browser runs. CI installs all three.
+
+## SQLite backup and restore
+
+`npm run db:backup -- <new-backup.sqlite>` makes a WAL-consistent SQLite online backup with `better-sqlite3`'s backup API, validates integrity and schema, and refuses to overwrite an existing destination. Store backups outside the repository and protect them as sensitive data.
+
+Restore only while the web app and notification worker are stopped: `npm run db:restore -- <backup.sqlite> --confirm-stopped`. The command verifies source integrity/schema, stages and validates the restore beside the target, and writes a non-overwriting `.pre-restore-*` safety backup before replacing the configured database. The displaced original file is retained as a rollback copy. The restore command does not merge databases or overwrite the source backup.
 
 ## Reproducible demonstration
 

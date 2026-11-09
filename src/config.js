@@ -15,6 +15,7 @@ function loadConfig(overrides = {}) {
     nodeEnv,
     port: Number(overrides.port ?? env.PORT ?? 3000),
     dbPath: overrides.dbPath ?? env.HEALTH_DB_PATH ?? path.join(process.cwd(), 'data', 'health-centre.sqlite'),
+    publicBaseUrl: overrides.publicBaseUrl ?? env.PUBLIC_BASE_URL ?? null,
     sessionTtlSeconds: Number(overrides.sessionTtlSeconds ?? env.SESSION_TTL_SECONDS ?? 60 * 60 * 8),
     cookieSecure: overrides.cookieSecure ?? parseBoolean(env.COOKIE_SECURE, nodeEnv === 'production'),
     demoPassword: overrides.demoPassword ?? env.HEALTH_DEMO_PASSWORD ?? (nodeEnv === 'production' ? undefined : 'ChangeMe123!'),
@@ -23,6 +24,12 @@ function loadConfig(overrides = {}) {
   if (!Number.isInteger(config.port) || config.port < 1 || config.port > 65535) throw new Error('PORT must be an integer between 1 and 65535');
   if (!Number.isInteger(config.sessionTtlSeconds) || config.sessionTtlSeconds < 60) throw new Error('SESSION_TTL_SECONDS must be an integer of at least 60');
   if (nodeEnv === 'production' && !config.cookieSecure) throw new Error('COOKIE_SECURE must be true in production');
+  if (config.publicBaseUrl) {
+    let parsed;
+    try { parsed = new URL(config.publicBaseUrl); } catch { throw new Error('PUBLIC_BASE_URL must be an absolute HTTP(S) URL'); }
+    if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('PUBLIC_BASE_URL must use HTTP or HTTPS');
+    if (nodeEnv === 'production' && parsed.protocol !== 'https:') throw new Error('PUBLIC_BASE_URL must use HTTPS in production');
+  }
   return config;
 }
 

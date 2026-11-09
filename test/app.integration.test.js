@@ -28,9 +28,23 @@ test('health and readiness endpoints expose a usable service', async () => {
   const health = await request(system.app).get('/healthz');
   assert.equal(health.status, 200);
   assert.equal(health.body.status, 'ok');
+  assert.equal(health.headers['strict-transport-security'], undefined);
+  assert.doesNotMatch(health.headers['content-security-policy'], /upgrade-insecure-requests/);
   const ready = await request(system.app).get('/readyz');
   assert.equal(ready.status, 200);
   assert.equal(ready.body.database, 'ok');
+});
+
+test('production security headers retain HTTPS enforcement', async () => {
+  const system = createApp({ config: { dbPath: ':memory:', nodeEnv: 'production', cookieSecure: true, logLevel: 'silent' } });
+  try {
+    const health = await request(system.app).get('/healthz');
+    assert.equal(health.status, 200);
+    assert.match(health.headers['strict-transport-security'], /max-age=/);
+    assert.match(health.headers['content-security-policy'], /upgrade-insecure-requests/);
+  } finally {
+    system.close();
+  }
 });
 
 test('active browser surface renders real navigation and authenticated dashboard', async () => {
@@ -178,4 +192,75 @@ test('outbox processing reclaims expired leases and does not repeat delivered ev
   assert.equal(await system.appointments.processOutboxOnce({ adapter, now: clock }), null);
   system.close();
   openSystems.delete(system);
+});
+
+test('administrator lifecycle provisions accounts, revokes disabled sessions, and protects the last admin', async () => {
+  const system = createTestSystem();
+  const admin = request.agent(system.app);
+  const adminCsrf = await login(admin, 'admin@health.local');
+  const created = await admin.post('/admin/accounts').set('Accept', 'application/json').set('x-csrf-token', adminCsrf).send({
+    email: ' NEW.DOCTOR@health.local ', name: 'Dr New', password: 'Initial-Strong-Password-42!', role: 'doctor',
+  });
+  assert.equal(created.status, 201);
+  const account = system.db.prepare("SELECT id FROM users WHERE email = 'new.doctor@health.local'").get();
+  assert.ok(account);
+  assert.equal(system.db.prepare('SELECT COUNT(*) AS count FROM doctors WHERE user_id = ?').get(account.id).count, 1);
+  assert.equal(system.db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'account.created' AND aggregate_id = ?").get(String(account.id)).count, 1);
+
+  const escalation = await admin.post('/admin/accounts').set('Accept', 'application/json').set('x-csrf-token', adminCsrf).send({
+    email: 'escalation@health.local', name: 'Escalation Attempt', password: 'Initial-Strong-Password-42!', role: 'admin',
+  });
+  assert.equal(escalation.status, 400);
+  const missingAdminConfirmation = await admin.post('/admin/accounts/admin').set('Accept', 'application/json').set('x-csrf-token', adminCsrf).send({
+    email: 'second-admin@health.local', name: 'Second Admin', password: 'Initial-Strong-Password-42!', role: 'admin',
+  });
+  assert.equal(missingAdminConfirmation.status, 400);
+  const secondAdminResponse = await admin.post('/admin/accounts/admin').set('Accept', 'application/json').set('x-csrf-token', adminCsrf).send({
+    email: 'second-admin@health.local', name: 'Second Admin', password: 'Initial-Strong-Password-42!', role: 'admin', confirmAdminCreation: 'yes',
+  });
+  assert.equal(secondAdminResponse.status, 201);
+  const secondAdminId = secondAdminResponse.body.user.id;
+
+  const doctor = request.agent(system.app);
+  await login(doctor, 'new.doctor@health.local', 'Initial-Strong-Password-42!');
+  const disabled = await admin.post(`/admin/accounts/${account.id}/disable`).set('Accept', 'application/json').set('x-csrf-token', adminCsrf);
+  assert.equal(disabled.status, 200);
+  assert.equal((await doctor.get('/dashboard')).status, 302);
+  assert.equal((await request(system.app).post('/api/auth/login').send({ email: 'new.doctor@health.local', password: 'Initial-Strong-Password-42!' })).status, 401);
+
+  await admin.post(`/admin/accounts/${secondAdminId}/disable`).set('Accept', 'application/json').set('x-csrf-token', adminCsrf);
+  const originalAdminId = system.db.prepare("SELECT id FROM users WHERE email = 'admin@health.local'").get().id;
+  const lastAdmin = await admin.post(`/admin/accounts/${originalAdminId}/disable`).set('Accept', 'application/json').set('x-csrf-token', adminCsrf);
+  assert.equal(lastAdmin.status, 409);
+  assert.equal(system.db.prepare("SELECT account_status FROM users WHERE email = 'admin@health.local'").get().account_status, 'active');
+});
+
+test('password recovery is generic, single use, revokes old sessions, and never returns the token', async () => {
+  let deliveredUrl;
+  const system = createApp({
+    config: { dbPath: ':memory:', nodeEnv: 'test', logLevel: 'silent' },
+    passwordResetAdapter: { async deliver({ resetUrl }) { deliveredUrl = resetUrl; } },
+  });
+  seedDemoData({ db: system.db, config: system.config });
+  openSystems.add(system);
+  const patient = request.agent(system.app);
+  await login(patient, 'patient@health.local');
+  const existingSessionCount = system.db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = 'patient@health.local')").get().count;
+  const forgot = await request(system.app).post('/password/forgot').send({ email: 'patient@health.local' });
+  assert.equal(forgot.status, 200);
+  assert.match(forgot.text, /If an active account matches/);
+  assert.doesNotMatch(forgot.text, /token=/);
+  const token = new URL(deliveredUrl).searchParams.get('token');
+  assert.ok(token);
+  const reset = await request(system.app).post('/password/reset').send({ token, password: 'Replacement-Strong-Password-55!', confirmPassword: 'Replacement-Strong-Password-55!' });
+  assert.equal(reset.status, 302);
+  assert.equal((await patient.get('/dashboard')).status, 302);
+  assert.equal((await request(system.app).post('/api/auth/login').send({ email: 'patient@health.local', password: 'Replacement-Strong-Password-55!' })).status, 200);
+  assert.equal((await request(system.app).post('/password/reset').send({ token, password: 'Another-Strong-Password-56!', confirmPassword: 'Another-Strong-Password-56!' })).status, 400);
+  assert.equal(existingSessionCount, 1);
+  assert.equal(system.db.prepare("SELECT COUNT(*) AS count FROM audit_log WHERE action = 'password.reset'").get().count, 1);
+
+  const unknown = await request(system.app).post('/password/forgot').send({ email: 'nobody@health.local' });
+  assert.equal(unknown.status, forgot.status);
+  assert.match(unknown.text, /If an active account matches/);
 });

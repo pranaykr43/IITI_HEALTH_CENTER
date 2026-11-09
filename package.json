@@ -16,6 +16,8 @@
     "benchmark:http": "node scripts/http-benchmark.js",
     "migrate:legacy": "node scripts/migrate-legacy-json.js",
     "worker:notifications": "node src/workers/run-notification-worker.js",
+    "db:backup": "node scripts/database-backup.js",
+    "db:restore": "node scripts/database-restore.js",
     "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:headed": "node scripts/run-e2e.js --headed",
     "test:e2e:report": "playwright show-report"

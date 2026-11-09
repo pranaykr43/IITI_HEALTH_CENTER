@@ -8,7 +8,7 @@
 </head>
 <body class="muted-background">
   <header class="site-header shell-wide">
-    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
+    <a class="brand" href="/dashboard">Health Centre<span class="brand-dot">.</span></a>
     <div class="header-actions">
       <span class="user-chip"><%= currentUser.name %> · <%= currentUser.role %></span>
       <form method="post" action="/auth/logout">
@@ -20,6 +20,7 @@
 
   <main class="shell shell-wide">
     <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
+    <% if (errorMessage) { %><div class="alert error" role="alert"><%= errorMessage %></div><% } %>
     <section class="dashboard-heading">
       <div>
         <p class="eyebrow">Operational view</p>
@@ -43,14 +44,17 @@
         <div class="table-wrap">
           <table>
             <caption class="sr-only">Appointments visible to the current user</caption>
-            <thead><tr><th>Patient / ID</th><th>Status</th><th>Requested</th><th>Scheduled</th><th>Action</th></tr></thead>
+            <thead><tr><th>Patient / ID</th><th>Status</th><th>Requested</th><th>Doctor and schedule</th><% if (currentUser.role !== 'patient') { %><th>Patient details</th><% } %><th>Action</th></tr></thead>
             <tbody>
               <% appointments.forEach((item) => { %>
                 <tr>
-                  <td><strong><%= currentUser.role === 'patient' ? 'You' : item.patientId %></strong><small><%= item.id %></small></td>
+                  <td><strong><%= currentUser.role === 'patient' ? 'You' : item.patientName %></strong><small><%= item.id %></small></td>
                   <td><span class="status status-<%= item.status %>"><%= item.status %></span></td>
                   <td><%= new Date(item.requestedAt).toLocaleString() %></td>
-                  <td><%= item.scheduledFor ? new Date(item.scheduledFor).toLocaleString() : 'Not scheduled' %></td>
+                  <td><strong><%= item.doctorName || 'Awaiting assignment' %></strong><%= item.scheduledFor ? new Date(item.scheduledFor).toLocaleString() : 'Not scheduled' %>
+                    <% if (currentUser.role === 'patient' && item.status === 'completed') { %><span class="care-summary"><strong>Visit summary</strong><% if (item.prescription.test) { %><span>Test: <%= item.prescription.test %></span><% } %><% if (item.prescription.medicine) { %><span>Medicine: <%= item.prescription.medicine %></span><% } %><% if (item.prescription.advice) { %><span>Advice: <%= item.prescription.advice %></span><% } %></span><% } %>
+                  </td>
+                  <% if (currentUser.role !== 'patient') { %><td><strong><%= item.patientAge %> years · <%= item.patientPhone %></strong><span><%= currentUser.role === 'doctor' ? item.symptoms : 'Patient information is available to the assigned care team.' %></span></td><% } %>
                   <td>
                     <% if (currentUser.role === 'admin' && item.status === 'requested') { %>
                       <form method="post" action="/admin/appointments/<%= item.id %>/schedule" class="inline-form">
@@ -83,9 +87,83 @@
 
     <% if (currentUser.role === 'admin') { %>
       <section class="panel">
-        <div class="section-heading"><h2>Notification outbox</h2><span class="muted">Durable side-effect ledger</span></div>
-        <% if (!outbox.length) { %><div class="empty-state"><span>No events recorded.</span></div><% } else { %>
-          <div class="event-list"><% outbox.forEach((event) => { %><div class="event-row"><code><%= event.eventId %></code><span><%= event.eventType %></span><span class="status status-<%= event.status %>"><%= event.status %></span><span><%= event.attempts %> attempt(s)</span><% if (event.lastError) { %><small class="event-error">Last adapter error code: <code><%= event.lastError %></code></small><% } %></div><% }) %></div>
+        <div class="section-heading"><h2>Account management</h2><span class="muted"><%= accounts.length %> accounts</span></div>
+        <form method="post" action="/admin/accounts" class="account-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div><label for="account-name">Full name</label><input id="account-name" name="name" required maxlength="120"></div>
+          <div><label for="account-email">Email</label><input id="account-email" name="email" type="email" required maxlength="320"></div>
+          <div><label for="account-role">Role</label><select id="account-role" name="role"><option value="patient">Patient</option><option value="doctor">Doctor</option></select></div>
+          <div><label for="account-password">Temporary password</label><input id="account-password" name="password" type="password" minlength="12" maxlength="200" required autocomplete="new-password"></div>
+          <button class="button primary" type="submit">Create patient or doctor</button>
+        </form>
+        <details class="privileged-operation">
+          <summary>Create an administrator account</summary>
+          <p class="hint">This privileged operation grants access to accounts, schedules, and notification controls.</p>
+          <form method="post" action="/admin/accounts/admin" class="account-form">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="role" value="admin">
+            <div><label for="admin-name">Full name</label><input id="admin-name" name="name" required maxlength="120"></div>
+            <div><label for="admin-email">Email</label><input id="admin-email" name="email" type="email" required maxlength="320"></div>
+            <div><label for="admin-password">Temporary password</label><input id="admin-password" name="password" type="password" minlength="12" maxlength="200" required autocomplete="new-password"></div>
+            <label class="check-label"><input type="checkbox" name="confirmAdminCreation" value="yes" required> I confirm this person requires administrator privileges.</label>
+            <button class="button secondary" type="submit">Create administrator</button>
+          </form>
+        </details>
+        <div class="table-wrap account-table-wrap">
+          <table>
+            <caption class="sr-only">Accounts and current status</caption>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+            <tbody><% accounts.forEach((account) => { %><tr>
+              <td><%= account.name %></td><td><%= account.email %></td><td><%= account.role %></td>
+              <td><span class="status status-<%= account.status %>"><%= account.status %></span></td>
+              <td><%= new Date(account.createdAt).toLocaleString() %></td>
+              <td><% if (account.status === 'active') { %>
+                <form method="post" action="/admin/accounts/<%= account.id %>/disable"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button danger" type="submit">Disable</button></form>
+              <% } else { %>
+                <form method="post" action="/admin/accounts/<%= account.id %>/reactivate"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button secondary" type="submit">Reactivate</button></form>
+              <% } %></td>
+            </tr><% }) %></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading"><h2>Notification operations</h2><span class="muted">Database-backed queue status · local console adapter</span></div>
+        <div class="queue-grid" aria-label="Notification queue summary">
+          <div class="stat-card"><span>Pending</span><strong><%= outboxMetrics.pending %></strong></div>
+          <div class="stat-card"><span>Processing</span><strong><%= outboxMetrics.processing %></strong></div>
+          <div class="stat-card"><span>Failed</span><strong><%= outboxMetrics.failed %></strong></div>
+          <div class="stat-card"><span>Dead</span><strong><%= outboxMetrics.dead %></strong></div>
+          <div class="stat-card"><span>Total attempts</span><strong><%= outboxMetrics.attempts %></strong></div>
+        </div>
+        <p class="hint">Oldest pending event: <%= outboxMetrics.oldestPendingAt ? `${outboxMetrics.oldestPendingAgeSeconds} seconds` : 'none' %> · Worker last seen: <%= outboxMetrics.workerLastSeenAt ? `${outboxMetrics.workerName} at ${new Date(outboxMetrics.workerLastSeenAt).toLocaleString()}` : 'not yet observed' %></p>
+        <p class="notice">Manual redrive is limited to three times per event and preserves prior attempt counts. Delivery is at least once: a provider may repeat a side effect if it succeeded before a worker crash.</p>
+        <% if (!outbox.length) { %><div class="empty-state"><span>No notification events recorded.</span></div><% } else { %>
+          <div class="table-wrap">
+            <table>
+              <caption class="sr-only">Notification events without patient payloads</caption>
+              <thead><tr><th>Event</th><th>Type</th><th>Status</th><th>Attempts</th><th>Last error code</th><th>Action</th></tr></thead>
+              <tbody><% outbox.forEach((event) => { %><tr>
+                <td><code><%= event.eventId %></code><small>redrives: <%= event.redriveCount %></small></td>
+                <td><%= event.eventType %></td>
+                <td><span class="status status-<%= event.status %>"><%= event.status %></span></td>
+                <td><%= event.attempts %></td>
+                <td><%= event.lastError || '—' %></td>
+                <td><% if (event.status === 'dead' && event.redriveCount < 3) { %>
+                  <form method="post" action="/admin/notifications/<%= encodeURIComponent(event.eventId) %>/redrive" class="redrive-form">
+                    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                    <label class="sr-only" for="reason-<%= event.eventId %>">Reason for redriving this event</label>
+                    <input id="reason-<%= event.eventId %>" name="reason" minlength="10" maxlength="500" placeholder="Reason (10+ chars)" required>
+                    <button class="button small-button secondary" type="submit">Redrive</button>
+                  </form>
+                <% } else { %><span class="muted">No action</span><% } %></td>
+              </tr><% }) %></tbody>
+            </table>
+          </div>
+        <% } %>
+        <h3 class="subheading">Recent delivery and failure activity</h3>
+        <% if (!notificationActivity.length) { %><p class="muted">No completed delivery or failure activity yet.</p><% } else { %>
+          <ul class="activity-list"><% notificationActivity.forEach((event) => { %><li><strong><%= event.eventType %></strong> · <%= event.status %> · <%= event.attempts %> attempts · <%= new Date(event.deliveredAt || event.failedAt || event.createdAt).toLocaleString() %></li><% }) %></ul>
         <% } %>
       </section>
     <% } %>

@@ -1,7 +1,7 @@
 const { defineConfig, devices } = require('@playwright/test');
 
 const port = Number(process.env.E2E_PORT || 43173);
-const baseURL = `http://127.0.0.1:${port}`;
+const baseURL = `http://127.0.0.2:${port}`;
 
 module.exports = defineConfig({
   testDir: './e2e',
@@ -17,5 +17,9 @@ module.exports = defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+  ],
 });

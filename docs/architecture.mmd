@@ -1,8 +1,12 @@
 flowchart LR
   Browser --> HTTP[Express HTTP adapter]
-  HTTP --> Auth[Session + CSRF + RBAC]
+  HTTP --> Auth[Session + CSRF + RBAC + account lifecycle]
   HTTP --> Service[Appointment service]
   Service --> SQLite[(SQLite WAL)]
   SQLite --> Outbox[Transactional outbox]
   Outbox --> Worker[Retryable notification worker]
-  HTTP --> Ops[Health + metrics]
+  HTTP --> Ops[Admin queue operations + audited redrive]
+  SQLite --> Backup[Online backup + staged restore]
+  Ops --> SQLite
+  Backup --> SQLite
+  HTTP --> Health[Health + metrics]

@@ -10,13 +10,20 @@ function createAuthService(db, config) {
   `).get(String(email || '').trim().toLowerCase());
 
   const findUserById = (id) => db.prepare(`
-    SELECT users.id, users.email, users.name, users.role, doctors.id AS doctor_id
+    SELECT users.id, users.email, users.name, users.role, users.account_status, doctors.id AS doctor_id
     FROM users LEFT JOIN doctors ON doctors.user_id = users.id WHERE users.id = ?
   `).get(id);
 
   function publicUser(row) {
     if (!row) return null;
-    return { id: row.id, email: row.email, name: row.name, role: row.role, doctorId: row.doctor_id || null };
+    return {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      status: row.account_status || 'active',
+      doctorId: row.doctor_id || null,
+    };
   }
 
   function createUser({ email, name, role, password }) {
@@ -34,7 +41,7 @@ function createAuthService(db, config) {
 
   function authenticate(email, password) {
     const user = findUserByEmail(email);
-    if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash)) {
+    if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash) || user.account_status !== 'active') {
       throw new AuthenticationError('Invalid email or password');
     }
     return publicUser(user);
@@ -54,13 +61,17 @@ function createAuthService(db, config) {
     if (!id) return null;
     const session = db.prepare(`
       SELECT sessions.id, sessions.csrf_token, sessions.expires_at,
-             users.id AS user_id, users.email, users.name, users.role,
+             users.id AS user_id, users.email, users.name, users.role, users.account_status,
              doctors.id AS doctor_id
       FROM sessions JOIN users ON users.id = sessions.user_id
       LEFT JOIN doctors ON doctors.user_id = users.id
       WHERE sessions.id = ?
     `).get(id);
     if (!session) return null;
+    if (session.account_status !== 'active') {
+      db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+      return null;
+    }
     if (new Date(session.expires_at) <= new Date()) {
       db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
       return null;
@@ -75,6 +86,7 @@ function createAuthService(db, config) {
         name: session.name,
         role: session.role,
         doctor_id: session.doctor_id,
+        account_status: session.account_status,
       }),
     };
   }
@@ -83,11 +95,24 @@ function createAuthService(db, config) {
     if (id) db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
   }
 
+  function destroyUserSessions(userId) {
+    return db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId).changes;
+  }
+
   function cleanupSessions() {
     return db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString()).changes;
   }
 
-  return { authenticate, createUser, createSession, getSession, destroySession, cleanupSessions, findUserById };
+  return {
+    authenticate,
+    createUser,
+    createSession,
+    getSession,
+    destroySession,
+    destroyUserSessions,
+    cleanupSessions,
+    findUserById,
+  };
 }
 
 module.exports = { createAuthService };

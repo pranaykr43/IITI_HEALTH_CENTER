@@ -12,6 +12,7 @@
     <section class="panel auth-panel">
       <p class="eyebrow">Secure access</p>
       <h1>Sign in to your care workspace</h1>
+      <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
       <% if (error) { %><div class="alert error" role="alert"><%= error %></div><% } %>
       <form method="post" action="/auth/login" class="stack">
         <label for="email">Email</label>
@@ -20,6 +21,7 @@
         <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200">
         <button class="button primary" type="submit">Sign in</button>
       </form>
+      <p class="hint"><a href="/password/forgot">Forgot your password?</a></p>
       <p class="hint">For the local demo, run <code>npm run seed</code>; credentials are printed by the command and are never stored in source.</p>
     </section>
   </main>

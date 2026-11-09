@@ -1,14 +1,15 @@
 const { test, expect } = require('@playwright/test');
 const { signIn, requestAppointment, slotFromNow } = require('./helpers');
 
-test('patient request, admin scheduling conflict, and doctor completion', async ({ browser }) => {
+test('patient request, admin scheduling conflict, and doctor completion', async ({ browser }, testInfo) => {
   const patient = await browser.newPage();
   await signIn(patient, 'patient');
   const firstId = await requestAppointment(patient, `${Date.now()}1`);
   const secondId = await requestAppointment(patient, `${Date.now()}2`);
 
   await signIn(patient, 'admin');
-  const slot = slotFromNow();
+  const browserOffset = { chromium: 0, firefox: 10, webkit: 20 }[testInfo.project.name];
+  const slot = slotFromNow(8 + browserOffset);
   const firstRow = patient.locator('tbody tr').filter({ hasText: firstId });
   await firstRow.locator('select[name="doctorId"]').selectOption({ index: 1 });
   await firstRow.locator('input[name="scheduledFor"]').fill(slot);

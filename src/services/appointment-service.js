@@ -13,6 +13,8 @@ const {
 } = require('../domain/appointments');
 const { createConsoleNotificationAdapter } = require('../notifications/console-adapter');
 
+const MAX_MANUAL_REDRIVES = 3;
+
 function nowIso() {
   return new Date().toISOString();
 }
@@ -52,6 +54,8 @@ function mapAppointment(row) {
     status: row.status,
     requestedAt: row.requested_at,
     scheduledFor: row.scheduled_for,
+    patientName: row.patient_name || null,
+    doctorName: row.doctor_name || null,
     patientPhone: row.patient_phone,
     patientAge: row.patient_age,
     symptoms: row.symptoms,
@@ -211,11 +215,25 @@ function createAppointmentService(db) {
   function listForActor(actor) {
     let rows;
     if (actor.role === 'patient') {
-      rows = db.prepare('SELECT * FROM appointments WHERE patient_id = ? ORDER BY requested_at DESC').all(actor.id);
+      rows = db.prepare(`SELECT appointments.*, doctor_users.name AS doctor_name
+        FROM appointments
+        LEFT JOIN doctors ON doctors.id = appointments.doctor_id
+        LEFT JOIN users AS doctor_users ON doctor_users.id = doctors.user_id
+        WHERE appointments.patient_id = ? ORDER BY appointments.requested_at DESC`).all(actor.id);
     } else if (actor.role === 'doctor') {
-      rows = db.prepare('SELECT * FROM appointments WHERE doctor_id = ? ORDER BY requested_at DESC').all(actor.doctorId);
+      rows = db.prepare(`SELECT appointments.*, patient_users.name AS patient_name, doctor_users.name AS doctor_name
+        FROM appointments
+        JOIN users AS patient_users ON patient_users.id = appointments.patient_id
+        LEFT JOIN doctors ON doctors.id = appointments.doctor_id
+        LEFT JOIN users AS doctor_users ON doctor_users.id = doctors.user_id
+        WHERE appointments.doctor_id = ? ORDER BY appointments.requested_at DESC`).all(actor.doctorId);
     } else if (actor.role === 'admin') {
-      rows = db.prepare('SELECT * FROM appointments ORDER BY requested_at DESC').all();
+      rows = db.prepare(`SELECT appointments.*, patient_users.name AS patient_name, doctor_users.name AS doctor_name
+        FROM appointments
+        JOIN users AS patient_users ON patient_users.id = appointments.patient_id
+        LEFT JOIN doctors ON doctors.id = appointments.doctor_id
+        LEFT JOIN users AS doctor_users ON doctor_users.id = doctors.user_id
+        ORDER BY appointments.requested_at DESC`).all();
     } else {
       throw new AuthorizationError();
     }
@@ -235,10 +253,82 @@ function createAppointmentService(db) {
     return db.prepare(`
       SELECT event_id AS eventId, event_type AS eventType, aggregate_id AS aggregateId,
              status, attempts, available_at AS availableAt, last_error AS lastError,
-             failed_at AS failedAt
-      FROM outbox_events ORDER BY id
+             failed_at AS failedAt, redrive_count AS redriveCount, created_at AS createdAt,
+             delivered_at AS deliveredAt
+      FROM outbox_events ORDER BY id DESC LIMIT 50
     `).all();
   }
+
+  function getOutboxMetrics(nowMs = Date.now()) {
+    const counts = db.prepare(`
+      SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing,
+        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+        SUM(CASE WHEN status = 'dead' THEN 1 ELSE 0 END) AS dead,
+        COALESCE(SUM(attempts), 0) AS attempts,
+        MIN(CASE WHEN status = 'pending' THEN created_at END) AS oldestPendingAt
+      FROM outbox_events
+    `).get();
+    const heartbeat = db.prepare('SELECT worker_name AS workerName, last_seen_at AS lastSeenAt FROM notification_worker_heartbeats ORDER BY last_seen_at DESC LIMIT 1').get() || null;
+    return {
+      pending: counts.pending || 0,
+      processing: counts.processing || 0,
+      failed: counts.failed || 0,
+      dead: counts.dead || 0,
+      attempts: counts.attempts || 0,
+      oldestPendingAt: counts.oldestPendingAt,
+      oldestPendingAgeSeconds: counts.oldestPendingAt
+        ? Math.max(0, Math.floor((nowMs - Date.parse(counts.oldestPendingAt)) / 1000))
+        : 0,
+      workerName: heartbeat?.workerName || null,
+      workerLastSeenAt: heartbeat?.lastSeenAt || null,
+    };
+  }
+
+  function listRecentNotificationActivity(limit = 12) {
+    const boundedLimit = Math.max(1, Math.min(25, Number(limit) || 12));
+    return db.prepare(`
+      SELECT event_id AS eventId, event_type AS eventType, status, attempts,
+             last_error AS lastError, created_at AS createdAt, delivered_at AS deliveredAt,
+             failed_at AS failedAt, redrive_count AS redriveCount
+      FROM outbox_events
+      WHERE status IN ('delivered', 'failed', 'dead')
+      ORDER BY id DESC LIMIT ?
+    `).all(boundedLimit);
+  }
+
+  function recordWorkerHeartbeat(workerName = 'notifications', at = new Date().toISOString()) {
+    const normalizedName = String(workerName).trim();
+    if (!normalizedName || normalizedName.length > 80) throw new TypeError('workerName must be between 1 and 80 characters');
+    db.prepare(`
+      INSERT INTO notification_worker_heartbeats (worker_name, last_seen_at) VALUES (?, ?)
+      ON CONFLICT(worker_name) DO UPDATE SET last_seen_at = excluded.last_seen_at
+    `).run(normalizedName, at);
+  }
+
+  const redriveDeadEvent = db.transaction((actor, eventId, reason, at = new Date().toISOString()) => {
+    if (!actor || actor.role !== 'admin') throw new AuthorizationError();
+    const normalizedReason = String(reason || '').trim();
+    if (normalizedReason.length < 10 || normalizedReason.length > 500) {
+      throw new ValidationError('Redrive reason must be between 10 and 500 characters');
+    }
+    const event = db.prepare('SELECT id, status, attempts, redrive_count FROM outbox_events WHERE event_id = ?').get(eventId);
+    if (!event) throw new NotFoundError('Notification event not found');
+    if (event.status !== 'dead') throw new ConflictError('Only dead notification events can be redriven');
+    if (event.redrive_count >= MAX_MANUAL_REDRIVES) throw new ConflictError('This event has reached the manual redrive limit');
+    const update = db.prepare(`
+      UPDATE outbox_events
+      SET status = 'pending', available_at = ?, redrive_count = redrive_count + 1
+      WHERE id = ? AND status = 'dead' AND redrive_count = ?
+    `).run(at, event.id, event.redrive_count);
+    if (update.changes !== 1) throw new ConflictError('Notification event changed before it could be redriven');
+    db.prepare(`
+      INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
+      VALUES (?, 'notification.redriven', 'notification_event', ?, ?, ?)
+    `).run(actor.id, eventId, JSON.stringify({ reason: normalizedReason, attempts: event.attempts, redriveCount: event.redrive_count + 1 }), at);
+    return { eventId, status: 'pending', attempts: event.attempts, redriveCount: event.redrive_count + 1, availableAt: at };
+  }).immediate;
 
   function claimOutboxEvent({ nowMs, leaseMs, maxAttempts }) {
     return db.transaction(() => {
@@ -248,7 +338,7 @@ function createAppointmentService(db) {
         SET status = 'dead', failed_at = COALESCE(failed_at, ?),
             claim_token = NULL, lease_expires_at = NULL,
             last_error = COALESCE(last_error, 'maximum_attempts_reached')
-        WHERE attempts >= ? AND (
+        WHERE attempts >= (redrive_count + 1) * ? AND (
           (status IN ('pending', 'failed') AND available_at <= ?)
           OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
         )
@@ -256,7 +346,7 @@ function createAppointmentService(db) {
 
       const candidate = db.prepare(`
         SELECT * FROM outbox_events
-        WHERE attempts < ? AND (
+        WHERE attempts < (redrive_count + 1) * ? AND (
           (status IN ('pending', 'failed') AND available_at <= ?)
           OR (status = 'processing' AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
         )
@@ -280,6 +370,7 @@ function createAppointmentService(db) {
         claimToken,
         leaseExpiresAt,
         attempt: candidate.attempts + 1,
+        redriveCount: candidate.redrive_count,
         event: {
           eventId: candidate.event_id,
           eventType: candidate.event_type,
@@ -305,7 +396,7 @@ function createAppointmentService(db) {
 
   function failOutboxClaim(claim, error, { nowMs, maxAttempts, baseDelayMs, maxDelayMs }) {
     const failedAt = isoAt(nowMs);
-    const terminal = claim.attempt >= maxAttempts;
+    const terminal = claim.attempt >= (claim.redriveCount + 1) * maxAttempts;
     const nextAvailableAt = terminal
       ? failedAt
       : isoAt(nowMs + retryDelayMs(claim.attempt, baseDelayMs, maxDelayMs));
@@ -342,6 +433,7 @@ function createAppointmentService(db) {
     if (typeof deliver !== 'function') throw new TypeError('adapter must be a function or provide deliver(event)');
 
     const claimedAt = now();
+    recordWorkerHeartbeat(options.workerName || 'notifications', isoAt(claimedAt));
     const claim = claimOutboxEvent({ nowMs: claimedAt, leaseMs, maxAttempts });
     if (!claim) return null;
 
@@ -371,6 +463,10 @@ function createAppointmentService(db) {
     listForActor,
     listDoctors,
     listOutbox,
+    getOutboxMetrics,
+    listRecentNotificationActivity,
+    recordWorkerHeartbeat,
+    redriveDeadEvent,
     processOutboxOnce,
     countAppointments,
   };

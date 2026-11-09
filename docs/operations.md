@@ -10,7 +10,9 @@ npm start
 
 The default database is `data/health-centre.sqlite`. The database directory is intentionally ignored because it contains local state and session records.
 
-The checked-in seed accounts are for local development only. Demo seeding is rejected in production, and production startup requires secure cookies. Provision real accounts with a reviewed operator process; this project does not include password reset or MFA.
+The checked-in seed accounts are for local development only. Demo seeding is rejected in production, and production startup requires secure cookies. Active administrators can provision patient/doctor accounts and separately confirm administrator creation. Disabling an account revokes its sessions and prevents session hydration or new authentication; the last active administrator cannot be disabled. All lifecycle changes are transactional and audited.
+
+Password recovery responses do not disclose account existence. Reset tokens are stored only as SHA-256 hashes, expire after 30 minutes, are single-use, invalidate older outstanding tokens, and revoke active sessions. The default adapter logs only that local delivery is unconfigured; it never includes the reset URL or token. No real email is sent. The application rejects custom recovery adapters in production until provider delivery is reviewed. Configure `PUBLIC_BASE_URL` as the HTTPS origin before enabling an approved provider.
 
 ## Health checks
 
@@ -38,11 +40,25 @@ Transient adapter failures are retried with exponential backoff. Defaults are fi
 
 Tune the worker with `NOTIFICATION_POLL_INTERVAL_MS`, `NOTIFICATION_LEASE_MS`, `NOTIFICATION_MAX_ATTEMPTS`, `NOTIFICATION_RETRY_BASE_MS`, and `NOTIFICATION_RETRY_MAX_MS`. `Ctrl+C` or `SIGTERM` stops new passes, waits for the current adapter call to settle, then closes SQLite. If the process is killed before that, the lease expiry makes the event eligible for recovery. Back up the database before applying schema updates; startup runs the versioned outbox migration automatically.
 
-Inspect the outbox from the administrator dashboard or directly in SQLite. `failed` means a retry is scheduled; `dead` means the configured attempt limit was reached and needs operator review.
+Inspect counts, oldest pending age, cumulative attempts, heartbeat, and recent terminal delivery/failure history from the administrator dashboard. `failed` means a retry is scheduled; `dead` means the configured attempt limit was reached and needs operator review. Admins can redrive a dead event with a 10–500 character reason; the operation is CSRF-protected, audited, limited to three redrives per event, and preserves the stable event ID and prior attempts. At-least-once delivery means a provider may repeat an external effect after a crash.
 
 ## Backups
 
-For a local demo, copy the SQLite database while the application is stopped. For a production deployment, use a database with a tested backup and restore process; this repository does not claim SQLite is sufficient for a multi-node clinical workload.
+Create a verified online backup (safe with SQLite WAL enabled):
+
+```bash
+npm run db:backup -- ./private-backups/health-centre-2026-11-09.sqlite
+```
+
+The destination must not already exist. The command uses SQLite's online backup API, then checks integrity, required schema version, and expected tables. Store backups outside the repository and restrict access.
+
+To restore, stop both the web process and notification worker, then explicitly declare that state:
+
+```bash
+npm run db:restore -- ./private-backups/health-centre-2026-11-09.sqlite --confirm-stopped
+```
+
+Restore verifies source integrity/schema, stages a same-volume copy, validates it, writes a non-overwriting `.pre-restore-*` online safety backup of the current DB, then atomically replaces the configured target. It also retains the displaced original as a rollback file. Restore tests use only synthetic temporary databases. This runbook does not establish SQLite as sufficient for a multi-node clinical workload.
 
 ## Incident questions
 

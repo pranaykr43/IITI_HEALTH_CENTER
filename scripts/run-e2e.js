@@ -2,12 +2,13 @@ const http = require('node:http');
 const path = require('node:path');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
+const E2E_HOST = '127.0.0.2';
 
 function findPort() {
   return new Promise((resolve, reject) => {
     const probe = net.createServer();
     probe.once('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
+    probe.listen(0, E2E_HOST, () => {
       const { port } = probe.address();
       probe.close((error) => (error ? reject(error) : resolve(port)));
     });
@@ -16,7 +17,7 @@ function findPort() {
 
 function getReady(port) {
   return new Promise((resolve, reject) => {
-    const req = http.get({ host: '127.0.0.1', port, path: '/readyz', timeout: 500 }, (res) => {
+    const req = http.get({ host: E2E_HOST, port, path: '/readyz', timeout: 500 }, (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
@@ -30,7 +31,7 @@ function getReady(port) {
 
 function stopServer(port) {
   return new Promise((resolve) => {
-    const req = http.request({ host: '127.0.0.1', port, path: '/__e2e/shutdown', method: 'POST', timeout: 2_000 }, (res) => {
+    const req = http.request({ host: E2E_HOST, port, path: '/__e2e/shutdown', method: 'POST', timeout: 2_000 }, (res) => {
       res.resume();
       res.on('end', resolve);
     });

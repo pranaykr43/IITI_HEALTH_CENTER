@@ -6,8 +6,20 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   role TEXT NOT NULL CHECK (role IN ('patient', 'doctor', 'admin')),
   password_hash TEXT NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'disabled'))
 );
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  used_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS doctors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,10 +78,16 @@ CREATE TABLE IF NOT EXISTS outbox_events (
   claim_token TEXT,
   lease_expires_at TEXT,
   last_error TEXT,
-  failed_at TEXT
+  failed_at TEXT,
+  redrive_count INTEGER NOT NULL DEFAULT 0 CHECK (redrive_count >= 0)
 );
 
 CREATE INDEX IF NOT EXISTS idx_outbox_available ON outbox_events(status, available_at, id);
+
+CREATE TABLE IF NOT EXISTS notification_worker_heartbeats (
+  worker_name TEXT PRIMARY KEY,
+  last_seen_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

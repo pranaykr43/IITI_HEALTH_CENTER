@@ -11,6 +11,9 @@ const { loadConfig } = require('../config');
 const { AppError } = require('../errors');
 const { createAppointmentService } = require('../services/appointment-service');
 const { createAuthService } = require('../services/auth-service');
+const { createAccountService } = require('../services/account-service');
+const { createPasswordResetService } = require('../services/password-reset-service');
+const { createUnconfiguredPasswordResetAdapter } = require('../notifications/password-reset-adapter');
 const { createRouter, wantsJson } = require('./routes');
 
 function createApp(options = {}) {
@@ -18,6 +21,16 @@ function createApp(options = {}) {
   const db = options.db || openDatabase(config.dbPath);
   const logger = options.logger || pino({ level: config.logLevel });
   const auth = createAuthService(db, config);
+  if (config.nodeEnv === 'production' && options.passwordResetAdapter) {
+    throw new Error('Password reset delivery adapters are disabled in production until a reviewed provider is configured');
+  }
+  const passwordResetAdapter = options.passwordResetAdapter || createUnconfiguredPasswordResetAdapter({ logger });
+  const accounts = createAccountService({ db, auth });
+  const passwordResets = createPasswordResetService({
+    db,
+    adapter: passwordResetAdapter,
+    reportDeliveryFailure: () => logger.warn({ component: 'password-reset' }, 'password reset delivery adapter failed'),
+  });
   const appointments = createAppointmentService(db);
   const metrics = { requests: 0, errors: 0, appointmentsCreated: 0, startedAt: new Date().toISOString() };
   const app = express();
@@ -28,12 +41,29 @@ function createApp(options = {}) {
   app.locals.appName = 'Health Centre';
   app.locals.metrics = metrics;
 
-  app.use(helmet());
+  app.use(helmet({
+    strictTransportSecurity: config.nodeEnv === 'production' ? undefined : false,
+    contentSecurityPolicy: {
+      directives: {
+        'upgrade-insecure-requests': config.nodeEnv === 'production' ? [] : null,
+      },
+    },
+  }));
   app.use(express.json({ limit: '32kb' }));
   app.use(express.urlencoded({ extended: false, limit: '32kb' }));
   app.use(cookieParser());
   app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: config.nodeEnv === 'production' ? '1d' : 0 }));
-  app.use(pinoHttp({ logger, genReqId: (req) => req.get('x-request-id') || crypto.randomUUID() }));
+  app.use(pinoHttp({
+    logger,
+    genReqId: (req) => req.get('x-request-id') || crypto.randomUUID(),
+    serializers: {
+      req(req) {
+        const serialized = pino.stdSerializers.req(req);
+        serialized.url = String(serialized.url || '').split('?')[0];
+        return serialized;
+      },
+    },
+  }));
   app.use((req, res, next) => {
     req.id = req.id || res.getHeader('x-request-id') || crypto.randomUUID();
     res.setHeader('x-request-id', req.id);
@@ -86,9 +116,22 @@ function createApp(options = {}) {
       res.status(204).end();
       setImmediate(options.e2eShutdown);
     });
+    if (typeof options.resetE2ERedriveFixture === 'function') {
+      app.post('/__e2e/reset-redrive-fixture', (req, res) => {
+        options.resetE2ERedriveFixture();
+        return res.status(204).end();
+      });
+    }
+    if (typeof options.getE2EPasswordResetLink === 'function') {
+      app.get('/__e2e/password-reset-link', (req, res) => {
+        const link = options.getE2EPasswordResetLink(String(req.query.email || '').trim().toLowerCase());
+        if (!link) return res.status(404).json({ error: 'not_found' });
+        return res.json({ link });
+      });
+    }
   }
 
-  app.use(createRouter({ auth, appointments, metrics, config }));
+  app.use(createRouter({ auth, appointments, accounts, passwordResets, metrics, config, options }));
 
   app.use((req, res) => {
     const error = new AppError('Route not found', 404, 'not_found');
@@ -111,7 +154,7 @@ function createApp(options = {}) {
     return res.status(statusCode).render('error', { title: 'Request failed', error: payload });
   });
 
-  return { app, db, auth, appointments, config, metrics, close: () => db.close() };
+  return { app, db, auth, accounts, passwordResets, appointments, config, metrics, close: () => db.close() };
 }
 
 module.exports = { createApp };

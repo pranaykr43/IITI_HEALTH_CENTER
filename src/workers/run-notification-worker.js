@@ -1,4 +1,5 @@
 const pino = require('pino');
+const os = require('node:os');
 const { openDatabase } = require('../db');
 const { createAppointmentService } = require('../services/appointment-service');
 const { createConsoleNotificationAdapter } = require('../notifications/console-adapter');
@@ -14,6 +15,7 @@ function positiveIntegerFromEnv(name, fallback) {
 
 function main() {
   const processOptions = {
+    workerName: `notifications-${os.hostname()}-${process.pid}`.slice(0, 80),
     leaseMs: positiveIntegerFromEnv('NOTIFICATION_LEASE_MS', 30_000),
     maxAttempts: positiveIntegerFromEnv('NOTIFICATION_MAX_ATTEMPTS', 5),
     baseDelayMs: positiveIntegerFromEnv('NOTIFICATION_RETRY_BASE_MS', 1_000),

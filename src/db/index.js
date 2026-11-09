@@ -4,6 +4,8 @@ const Database = require('better-sqlite3');
 
 const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 const OUTBOX_RELIABILITY_MIGRATION = 1;
+const ACCOUNT_LIFECYCLE_MIGRATION = 2;
+const NOTIFICATION_OPERATIONS_MIGRATION = 3;
 
 function migrateLegacyIdempotencyTable(db) {
   const columns = db.pragma('table_info(idempotency_keys)');
@@ -84,6 +86,47 @@ function migrateOutboxReliability(db) {
   db.pragma(`user_version = ${OUTBOX_RELIABILITY_MIGRATION}`);
 }
 
+function migrateAccountLifecycle(db) {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= ACCOUNT_LIFECYCLE_MIGRATION) return;
+  const columns = new Set(db.pragma('table_info(users)').map((column) => column.name));
+  db.transaction(() => {
+    if (!columns.has('account_status')) {
+      db.exec("ALTER TABLE users ADD COLUMN account_status TEXT NOT NULL DEFAULT 'active' CHECK (account_status IN ('active', 'disabled'))");
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        used_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset_tokens(user_id, created_at DESC);
+    `);
+    db.pragma(`user_version = ${ACCOUNT_LIFECYCLE_MIGRATION}`);
+  }).immediate();
+}
+
+function migrateNotificationOperations(db) {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= NOTIFICATION_OPERATIONS_MIGRATION) return;
+  const columns = new Set(db.pragma('table_info(outbox_events)').map((column) => column.name));
+  db.transaction(() => {
+    if (!columns.has('redrive_count')) {
+      db.exec('ALTER TABLE outbox_events ADD COLUMN redrive_count INTEGER NOT NULL DEFAULT 0 CHECK (redrive_count >= 0)');
+    }
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notification_worker_heartbeats (
+        worker_name TEXT PRIMARY KEY,
+        last_seen_at TEXT NOT NULL
+      );
+    `);
+    db.pragma(`user_version = ${NOTIFICATION_OPERATIONS_MIGRATION}`);
+  }).immediate();
+}
+
 function openDatabase(dbPath) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -99,6 +142,8 @@ function openDatabase(dbPath) {
   db.exec(schema);
   migrateLegacyIdempotencyTable(db);
   migrateOutboxReliability(db);
+  migrateAccountLifecycle(db);
+  migrateNotificationOperations(db);
   return db;
 }
 
@@ -106,4 +151,10 @@ function closeDatabase(db) {
   if (db && db.open) db.close();
 }
 
-module.exports = { openDatabase, closeDatabase, migrateOutboxReliability };
+module.exports = {
+  openDatabase,
+  closeDatabase,
+  migrateOutboxReliability,
+  migrateAccountLifecycle,
+  migrateNotificationOperations,
+};
