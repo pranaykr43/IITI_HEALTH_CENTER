@@ -11,6 +11,8 @@ This project is an engineering rebuild of a student health-centre appointment pr
 
 The standalone `npm run worker:notifications` process claims outbox events with expiring leases, retries transient adapter errors with capped exponential backoff, and marks exhausted events `dead`. Its default adapter writes a local console summary only; no real email is sent.
 
+Browser regression coverage uses an isolated temporary SQLite database and synthetic accounts. Run `npm run test:e2e` for the Chromium suite, `npm run test:e2e:headed` to watch it, or `npm run test:e2e:report` to open the last HTML report. The test server uses a dedicated local port and never starts the notification worker.
+
 This is a local-first engineering showcase, not a production medical-record system. It intentionally does not claim HIPAA compliance, multi-region durability, real email delivery, or exactly-once external side effects.
 
 ## Why the naive version fails
@@ -90,7 +92,7 @@ npm test
 npm run check
 ```
 
-The tests cover the state machine, input boundaries, authentication, CSRF, role boundaries, idempotent retries, durable outbox creation, duplicate-slot rejection, atomic doctor completion, worker failures/recovery/fencing, and database migration.
+The tests cover the state machine, input boundaries, authentication, CSRF, role boundaries, idempotent retries, durable outbox creation, duplicate-slot rejection, atomic doctor completion, worker failures/recovery/fencing, database migration, and browser-based appointment flows, responsive layout, keyboard access, and axe checks.
 
 ## Reproducible demonstration
 

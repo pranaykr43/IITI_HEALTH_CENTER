@@ -7,3 +7,5 @@ data/*.sqlite-wal
 !example.env
 bench/results/*.json
 npm-debug.log*
+playwright-report/
+test-results/

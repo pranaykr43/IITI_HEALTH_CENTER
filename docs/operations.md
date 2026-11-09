@@ -28,6 +28,10 @@ npm run worker:notifications
 
 The default adapter writes a local console summary; it does not send email. A real provider can be injected through the notification adapter boundary when one is configured. Keep the worker supervised and point it at the same `HEALTH_DB_PATH` as the web process.
 
+## Browser regression suite
+
+Run `npm run test:e2e` to launch Chromium on a dynamically selected dedicated local HTTP port and against a fresh SQLite file created under the operating system temporary directory. The harness seeds synthetic patient, administrator, and doctor accounts (plus a second doctor for ownership checks), waits for `/readyz`, and removes its temporary database on shutdown. It does not read `HEALTH_DB_PATH`, change the development database, or start the notification worker. `npm run test:e2e:headed` runs visibly; `npm run test:e2e:report` opens the last HTML report. Playwright stores failure screenshots and traces under the ignored `test-results/` directory.
+
 The worker claims each event in a short `BEGIN IMMEDIATE` transaction, then invokes the adapter outside the transaction. Each claim receives a random fencing token and a lease. A worker may acknowledge or reschedule an event only while its token is current and its lease is unexpired. Expired claims are recoverable after a crash; stale workers cannot change a newer claim's result.
 
 Transient adapter failures are retried with exponential backoff. Defaults are five attempts, a 1-second base delay, a 60-second cap, and a 30-second lease. After the final failed attempt, the event becomes `dead` and is not retried automatically. The event ID is stable across attempts; adapters that perform external side effects should use it as their idempotency key because delivery is at least once.

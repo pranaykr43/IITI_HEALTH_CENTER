@@ -81,6 +81,13 @@ function createApp(options = {}) {
     ].join('\n') + '\n');
   });
 
+  if (typeof options.e2eShutdown === 'function') {
+    app.post('/__e2e/shutdown', (req, res) => {
+      res.status(204).end();
+      setImmediate(options.e2eShutdown);
+    });
+  }
+
   app.use(createRouter({ auth, appointments, metrics, config }));
 
   app.use((req, res) => {

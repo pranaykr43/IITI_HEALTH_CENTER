@@ -2,7 +2,7 @@
 
 **Reviewed:** 2026-11-09
 
-**Code state:** `feature/notification-worker-retries` after the notification-worker milestone and current production-configuration hardening.
+**Code state:** `feature/browser-regression` after adding isolated Chromium browser verification to the notification-worker milestone.
 **Purpose:** Appointment intake, administrator scheduling, and doctor completion in a local-first engineering showcase.
 
 ## Verdict
@@ -22,7 +22,7 @@ It is **not a production medical-record system**. The default notification adapt
 | P2 | Worker lease behavior | Delivery longer than the configured lease can finish stale; a second worker may have reclaimed the event, and the old worker is correctly fenced from acknowledgement. This can cause a duplicate external side effect. | Reproduced by the fake-clock stale-worker test. Set the lease above adapter timeouts and require provider idempotency. A heartbeat/lease extension is a future option if long-running providers become necessary. |
 | P2 | Worker operations | `dead` events and safe error codes are visible, but there is no operator redrive workflow or alerting/queue-depth monitor. | Add a controlled redrive action with audit records and metrics before using a real provider. Do not automatically loop terminal events. |
 | P2 | Observability | `/metrics` reports in-memory HTTP and appointment counters. It does not measure database latency, outbox depth/age, retries, dead events, or worker processing duration, and counters reset on restart. | Add bounded-cardinality worker and queue metrics plus alert thresholds when there is an operator-facing deployment. |
-| P2 | Browser verification | Server-rendered patient/admin/doctor flows have been exercised manually with synthetic data; there is no browser automation in CI and no repeatable mobile/accessibility regression suite. | Add a small Playwright smoke suite for login, booking, scheduling, completion, authorization, and narrow viewport layout. Keep it isolated to a temporary synthetic database. |
+| P2 | Browser verification | The Playwright suite covers key UI flows, roles, viewports, keyboard access, and axe checks in CI. It runs Chromium only; cross-browser behavior and full assistive-technology testing remain outside this milestone. | Add Firefox/WebKit coverage if browser support requirements expand, and pair automated checks with user testing using assistive technology. |
 | P2 | Historical tree and local data | Legacy `routes/` and `views/` are retained but not mounted. Local JSON exports can contain plaintext passwords and personal/medical fields; local worktree edits include those exports. | Keep legacy files out of new commits, do not print their contents, and rotate any credential that may have been exposed. Use the dry-run importer only after mapping and backup review. |
 | P2 | Benchmark scope | The recorded service and HTTP benchmarks are single-host local runs. The original runtime could not produce a valid baseline, so there is no honest before/after comparison. | See [`benchmark-report.md`](benchmark-report.md). Reproduce measurements on the same host; do not interpret them as capacity or production-storage claims. |
 
@@ -49,7 +49,7 @@ The strongest guarantees are database-backed: appointment state, audit records, 
 1. **Account lifecycle:** define operator provisioning, password reset, and account disablement; test authorization when accounts change state.
 2. **Provider boundary:** choose a real provider only when authorized, add idempotent delivery keyed by event ID, timeouts, and recipient minimization; do not send real data in tests.
 3. **Operations:** expose outbox depth, oldest age, retry/dead counts, and worker health; add audited redrive for dead events.
-4. **Browser regression:** add isolated Playwright workflows and desktop/mobile accessibility checks.
+4. **Browser regression:** expand beyond the initial Chromium desktop/tablet/mobile checks when supported browser requirements are defined.
 5. **Deployment boundary:** document and test a single-node deployment/backup restore; evaluate PostgreSQL and shared rate limiting only if a multi-instance target is selected.
 
 ## Explicit non-goals
