@@ -6,9 +6,9 @@
   <title><%= title %> · Health Centre</title>
   <link rel="stylesheet" href="/app.css">
 </head>
-<body class="muted-background">
-  <header class="site-header shell-wide">
-    <a class="brand" href="/dashboard">Health Centre<span class="brand-dot">.</span></a>
+<body>
+  <header class="site-header"><div class="site-header-inner">
+    <a class="brand" href="/">IITI Health Centre</a>
     <div class="header-actions">
       <span class="user-chip"><%= currentUser.name %> · <%= currentUser.role %></span>
       <form method="post" action="/auth/logout">
@@ -16,14 +16,14 @@
         <button class="link-button" type="submit">Sign out</button>
       </form>
     </div>
-  </header>
+  </div></header>
 
-  <main class="shell shell-wide">
-    <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
-    <% if (errorMessage) { %><div class="alert error" role="alert"><%= errorMessage %></div><% } %>
+  <main class="content-shell dashboard-shell">
+    <% if (message) { %><div class="form-success" role="status"><%= message %></div><% } %>
+    <% if (errorMessage) { %><div class="form-error" role="alert"><%= errorMessage %></div><% } %>
     <section class="dashboard-heading">
       <div>
-        <p class="eyebrow">Operational view</p>
+        <p class="section-index">Local demo · <%= currentUser.role %> workspace</p>
         <h1><%= currentUser.role === 'patient' ? 'Your appointments' : currentUser.role === 'doctor' ? 'Assigned care' : 'Scheduling desk' %></h1>
       </div>
       <% if (currentUser.role === 'patient') { %><a class="button primary" href="/appointments/new">New appointment</a><% } %>
@@ -39,17 +39,17 @@
     <section class="panel">
       <div class="section-heading"><h2>Appointments</h2><span class="muted"><%= appointments.length %> records</span></div>
       <% if (!appointments.length) { %>
-        <div class="empty-state"><strong>No appointments yet.</strong><span>The empty state is deliberate: no fabricated dashboard numbers.</span></div>
+        <div class="empty-state"><h3>No appointments yet</h3><p>When a request is created or assigned to you, it will appear here.</p><% if (currentUser.role === 'patient') { %><a class="button primary" href="/appointments/new">Request an appointment</a><% } %></div>
       <% } else { %>
         <div class="table-wrap">
-          <table>
+          <table class="data-table">
             <caption class="sr-only">Appointments visible to the current user</caption>
             <thead><tr><th>Patient / ID</th><th>Status</th><th>Requested</th><th>Doctor and schedule</th><% if (currentUser.role !== 'patient') { %><th>Patient details</th><% } %><th>Action</th></tr></thead>
             <tbody>
               <% appointments.forEach((item) => { %>
                 <tr>
                   <td><strong><%= currentUser.role === 'patient' ? 'You' : item.patientName %></strong><small><%= item.id %></small></td>
-                  <td><span class="status status-<%= item.status %>"><%= item.status %></span></td>
+                  <td><span class="status-badge status-<%= item.status %>"><%= item.status %></span></td>
                   <td><%= new Date(item.requestedAt).toLocaleString() %></td>
                   <td><strong><%= item.doctorName || 'Awaiting assignment' %></strong><%= item.scheduledFor ? new Date(item.scheduledFor).toLocaleString() : 'Not scheduled' %>
                     <% if (currentUser.role === 'patient' && item.status === 'completed') { %><span class="care-summary"><strong>Visit summary</strong><% if (item.prescription.test) { %><span>Test: <%= item.prescription.test %></span><% } %><% if (item.prescription.medicine) { %><span>Medicine: <%= item.prescription.medicine %></span><% } %><% if (item.prescription.advice) { %><span>Advice: <%= item.prescription.advice %></span><% } %></span><% } %>
@@ -110,12 +110,12 @@
           </form>
         </details>
         <div class="table-wrap account-table-wrap">
-          <table>
+          <table class="data-table">
             <caption class="sr-only">Accounts and current status</caption>
             <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
             <tbody><% accounts.forEach((account) => { %><tr>
               <td><%= account.name %></td><td><%= account.email %></td><td><%= account.role %></td>
-              <td><span class="status status-<%= account.status %>"><%= account.status %></span></td>
+              <td><span class="status-badge status-<%= account.status %>"><%= account.status %></span></td>
               <td><%= new Date(account.createdAt).toLocaleString() %></td>
               <td><% if (account.status === 'active') { %>
                 <form method="post" action="/admin/accounts/<%= account.id %>/disable"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button danger" type="submit">Disable</button></form>
@@ -140,13 +140,13 @@
         <p class="notice">Manual redrive is limited to three times per event and preserves prior attempt counts. Delivery is at least once: a provider may repeat a side effect if it succeeded before a worker crash.</p>
         <% if (!outbox.length) { %><div class="empty-state"><span>No notification events recorded.</span></div><% } else { %>
           <div class="table-wrap">
-            <table>
+            <table class="data-table">
               <caption class="sr-only">Notification events without patient payloads</caption>
               <thead><tr><th>Event</th><th>Type</th><th>Status</th><th>Attempts</th><th>Last error code</th><th>Action</th></tr></thead>
               <tbody><% outbox.forEach((event) => { %><tr>
                 <td><code><%= event.eventId %></code><small>redrives: <%= event.redriveCount %></small></td>
                 <td><%= event.eventType %></td>
-                <td><span class="status status-<%= event.status %>"><%= event.status %></span></td>
+                <td><span class="status-badge status-<%= event.status %>"><%= event.status %></span></td>
                 <td><%= event.attempts %></td>
                 <td><%= event.lastError || '—' %></td>
                 <td><% if (event.status === 'dead' && event.redriveCount < 3) { %>
@@ -168,5 +168,6 @@
       </section>
     <% } %>
   </main>
+  <footer class="site-footer"><div class="site-footer-inner"><p>Signed in as <%= currentUser.name %> · <%= currentUser.role %></p><p>Local engineering showcase · Not a live campus service</p></div></footer>
 </body>
 </html>

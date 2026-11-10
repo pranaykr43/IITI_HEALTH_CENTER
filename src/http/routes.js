@@ -185,7 +185,7 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
 
   router.get('/auth/google', (req, res, next) => {
     try {
-      if (!googleOAuth.enabled) return res.redirect('/login/patient?error=Google%20sign-in%20is%20not%20configured%20yet.');
+      if (!googleOAuth.enabled) return res.redirect('/login/patient');
       const browserToken = crypto.randomBytes(32).toString('base64url');
       const authorization = googleOAuth.createAuthorizationRequest(browserToken);
       res.cookie('health_google_browser', browserToken, {

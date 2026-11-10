@@ -1,45 +1,14 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= title %> · Health Centre</title>
-  <link rel="stylesheet" href="/app.css">
-</head>
-<body class="muted-background">
-  <main class="shell auth-choice-shell">
-    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
-    <section class="auth-choice-intro">
-      <p class="eyebrow">Welcome to the Health Centre</p>
-      <h1>How can we help you today?</h1>
-      <p class="lede small">Choose the sign-in option that matches your role.</p>
-      <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
-      <% if (error) { %><div class="alert error" role="alert"><%= error %></div><% } %>
-    </section>
-    <div class="auth-choice-grid">
-      <article class="panel role-card patient-card">
-        <span class="role-icon" aria-hidden="true">+</span>
-        <p class="eyebrow">For patients</p>
-        <h2>Patient Sign In</h2>
-        <p>Book appointments, check their status, and view your prescriptions.</p>
-        <div class="role-actions"><a class="button primary" href="/login/patient">Patient Sign In</a><a href="/register">Create a patient account</a></div>
-      </article>
-      <article class="panel role-card">
-        <span class="role-icon doctor-icon" aria-hidden="true">✚</span>
-        <p class="eyebrow">For care providers</p>
-        <h2>Doctor Sign In</h2>
-        <p>View assigned appointments, manage consultations, and record prescriptions.</p>
-        <div class="role-actions"><a class="button secondary" href="/login/doctor">Doctor Sign In</a><span class="muted">Accounts are provided by an administrator.</span></div>
-      </article>
-      <article class="panel role-card">
-        <span class="role-icon admin-icon" aria-hidden="true">▦</span>
-        <p class="eyebrow">For centre staff</p>
-        <h2>Administrator</h2>
-        <p>Coordinate schedules, manage accounts, and oversee centre operations.</p>
-        <div class="role-actions"><a class="button secondary" href="/login/admin">Administrator Sign In</a><span class="muted">Administrator access is provisioned securely.</span></div>
-      </article>
-    </div>
-    <p class="auth-choice-footer"><a href="/">← Return to Health Centre</a></p>
-  </main>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><%= title %> · Health Centre</title><link rel="stylesheet" href="/app.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/">IITI Health Centre</a><a class="text-link" href="/">Return home</a></div></header>
+<main class="content-shell">
+  <div class="page-heading"><p class="section-index">Sign in</p><h1>Choose your workspace</h1><p>Select the role associated with your Health Centre account.</p></div>
+  <% if (message) { %><div class="form-success" role="status"><%= message %></div><% } %>
+  <% if (error) { %><div class="form-error" role="alert"><%= error %></div><% } %>
+  <div class="auth-choice-grid">
+    <article class="role-card"><h2>Patient</h2><p>Request appointments and follow their coordination status.</p><div class="role-actions"><a class="button primary" href="/login/patient">Patient sign in</a><a href="/register">Create an account</a></div></article>
+    <article class="role-card"><h2>Doctor</h2><p>Review assigned requests and record visit details.</p><div class="role-actions"><a class="button secondary" href="/login/doctor">Doctor sign in</a><span class="muted">Accounts are provisioned for the local demo.</span></div></article>
+    <article class="role-card"><h2>Administrator</h2><p>Coordinate schedules, accounts, and notification operations.</p><div class="role-actions"><a class="button secondary" href="/login/admin">Administrator sign in</a><span class="muted">Accounts are provisioned for the local demo.</span></div></article>
+  </div>
+  <p class="hero-note">Local engineering showcase · Not a live campus service</p>
+</main><footer class="site-footer"><div class="site-footer-inner"><p>Use fictional information in this demonstration.</p><p><a href="/">IITI Health Centre</a></p></div></footer></body></html>

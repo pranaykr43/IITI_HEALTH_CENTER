@@ -3,10 +3,11 @@ const { signIn } = require('./helpers');
 
 test('home links to login, patient can sign in, protected route and logout work', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Care coordination, made clear.' })).toBeVisible();
-  await page.getByRole('link', { name: 'Patient Sign In' }).first().click();
+  await expect(page.getByRole('heading', { name: 'IITI Health Centre' })).toBeVisible();
+  await expect(page.getByText('Not a live campus service', { exact: false }).first()).toBeVisible();
+  await page.getByRole('link', { name: 'Patient sign in' }).first().click();
   await expect(page).toHaveURL(/\/login\/patient$/);
-  await expect(page.getByRole('heading', { name: 'Patient Sign In' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Patient sign in' })).toBeVisible();
 
   await signIn(page, 'patient');
   await expect(page.getByRole('heading', { name: 'Your appointments' })).toBeVisible();

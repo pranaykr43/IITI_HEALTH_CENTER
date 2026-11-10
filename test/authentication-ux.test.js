@@ -108,14 +108,30 @@ test('public registration always creates a patient and rejects missing CSRF', as
   assert.equal(system.db.prepare('SELECT COUNT(*) AS count FROM users WHERE email = ?').get('no.csrf@example.test').count, 0);
 });
 
-test('Google is clearly disabled without configuration and does not affect password login', async () => {
+test('Google sign-in stays unobtrusive without configuration and password login remains available', async () => {
   const { system } = createSystem();
   const page = await request(system.app).get('/login/patient');
-  assert.match(page.text, /Google sign-in is not configured/);
+  assert.match(page.text, /name="email"/);
+  assert.match(page.text, /name="password"/);
+  assert.doesNotMatch(page.text, /Google sign-in is not configured/);
   assert.doesNotMatch(page.text, /href="\/auth\/google"/);
-  assert.equal((await request(system.app).get('/auth/google')).status, 302);
+  const register = await request(system.app).get('/register');
+  assert.doesNotMatch(register.text, /Google sign-in is not configured/);
+  assert.doesNotMatch(register.text, /href="\/auth\/google"/);
+  const googleRoute = await request(system.app).get('/auth/google');
+  assert.equal(googleRoute.status, 302);
+  assert.equal(googleRoute.headers.location, '/login/patient');
   const login = await request(system.app).post('/api/auth/login').send({ email: 'patient@health.local', password: 'ChangeMe123!' });
   assert.equal(login.status, 200);
+});
+
+test('Google sign-in controls appear only when OAuth configuration is available', async () => {
+  const { system } = createSystem({ google: true });
+  const login = await request(system.app).get('/login/patient');
+  const register = await request(system.app).get('/register');
+  assert.match(login.text, /href="\/auth\/google"/);
+  assert.match(register.text, /href="\/auth\/google"/);
+  assert.doesNotMatch((await request(system.app).get('/login/doctor')).text, /href="\/auth\/google"/);
 });
 
 test('Google OAuth verifies claims, links a patient, and regenerates the server session', async () => {

@@ -3,59 +3,66 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= title %> · reliable care coordination</title>
+  <meta name="description" content="A local engineering showcase for campus-style appointment coordination.">
+  <title><%= title || 'IITI Health Centre' %></title>
   <link rel="stylesheet" href="/app.css">
 </head>
 <body>
-  <header class="site-header">
-    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
-    <nav aria-label="Primary navigation">
-      <% if (currentUser) { %>
-        <a href="/dashboard">Dashboard</a>
-      <% } else { %>
-        <a href="/login">Sign in</a>
-      <% } %>
-    </nav>
-  </header>
+<header class="site-header"><div class="site-header-inner">
+  <a class="brand" href="/">IITI Health Centre</a>
+  <nav class="site-nav" aria-label="Main navigation"><a href="/">Home</a><a href="#for-patients">For Patients</a><details><summary>For Staff</summary><div class="nav-dropdown"><a href="/login/doctor">Doctor sign in</a><a href="/login/admin">Administrator sign in</a></div></details><a href="#about-demo">About (Demo)</a></nav>
+</div></header>
+<main>
+  <section class="hero page-shell" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="demo-notice"><span class="demo-dot" aria-hidden="true"></span>Local demo <span aria-hidden="true">·</span> Not a live campus service</p>
+      <h1 id="hero-title">IITI Health Centre</h1>
+      <p class="hero-lede">A campus-style appointment coordination system.</p>
+      <p class="hero-body">Request care, follow your appointment status, and review visit details recorded by the care team. This local engineering showcase demonstrates how patients, administrators, and doctors coordinate care.</p>
+      <div class="hero-actions">
+        <% if (currentUser) { %>
+          <a class="button primary" href="/dashboard">Go to your dashboard</a>
+          <% if (currentUser.role === 'patient') { %><a class="button secondary" href="/appointments/new">Request an appointment</a><% } %>
+        <% } else { %>
+          <a class="button primary" href="/register">Create a patient account</a>
+          <a class="button secondary" href="/login/patient">Patient sign in</a>
+        <% } %>
+      </div>
+      <p class="hero-note">For demonstration only. Do not enter real medical or personal information.</p>
+    </div>
+    <aside class="status-register" aria-labelledby="status-title">
+      <div class="register-heading"><span class="register-index">01</span><h2 id="status-title">Appointment status</h2></div>
+      <p class="register-intro">Each request moves through a clear coordination stage.</p>
+      <ol class="status-list">
+        <li><span class="status-mark status-requested" aria-hidden="true"></span><div><strong>Requested</strong><p>Waiting for an administrator to review.</p></div></li>
+        <li><span class="status-mark status-confirmed" aria-hidden="true"></span><div><strong>Confirmed</strong><p>A doctor and appointment time are assigned.</p></div></li>
+        <li><span class="status-mark status-completed" aria-hidden="true"></span><div><strong>Completed</strong><p>Visit details are available when recorded.</p></div></li>
+        <li><span class="status-mark status-other" aria-hidden="true"></span><div><strong>Rejected or cancelled</strong><p>The request will not proceed as scheduled.</p></div></li>
+      </ol>
+      <a class="text-link" href="#how-it-works">See how coordination works <span aria-hidden="true">→</span></a>
+    </aside>
+  </section>
 
-  <main class="shell home-main">
-    <section class="home-intro">
-      <p class="eyebrow">IITI Health Centre</p>
-      <h1>Care coordination, made clear.</h1>
-      <p class="lede">Book care, manage consultations, and coordinate appointments through one secure Health Centre workspace.</p>
-    </section>
-    <section class="home-role-grid" aria-label="Choose your Health Centre portal">
-      <article class="panel role-card patient-card">
-        <span class="role-icon" aria-hidden="true">+</span>
-        <p class="eyebrow">For patients</p>
-        <h2>Patient Portal</h2>
-        <p>Book appointments, check appointment status, and access your prescriptions.</p>
-        <div class="role-actions"><a class="button primary" href="/login/patient">Patient Sign In</a><a href="/register">Create a patient account</a></div>
-      </article>
-      <article class="panel role-card">
-        <span class="role-icon doctor-icon" aria-hidden="true">✚</span>
-        <p class="eyebrow">For care providers</p>
-        <h2>Doctor Portal</h2>
-        <p>View assigned appointments, manage consultations, and record prescriptions.</p>
-        <div class="role-actions"><a class="button secondary" href="/login/doctor">Doctor Sign In</a><span class="muted">Accounts are provided by an administrator.</span></div>
-      </article>
-      <article class="panel role-card">
-        <span class="role-icon admin-icon" aria-hidden="true">▦</span>
-        <p class="eyebrow">For centre staff</p>
-        <h2>Administrator Portal</h2>
-        <p>Coordinate schedules, manage accounts, and oversee centre operations.</p>
-        <div class="role-actions"><a class="button secondary" href="/login/admin">Administrator Sign In</a><span class="muted">Administrator access is provisioned securely.</span></div>
-      </article>
-    </section>
-    <section class="home-assurance" aria-label="Service information">
-      <strong>Private by design</strong><span>Each portal shows only the information and actions assigned to that role.</span>
-      <a href="/readyz">Service status</a>
-    </section>
-  </main>
+  <section class="how-section" id="how-it-works" aria-labelledby="how-title">
+    <div class="page-shell">
+      <div class="section-heading"><div><p class="section-index">A clear path through care</p><h2 id="how-title">How it works</h2></div><p>One shared workflow keeps each person’s next step easy to understand.</p></div>
+      <ol class="steps-list">
+        <li><span class="step-number">01</span><h3>Patient requests</h3><p>Share a short description and preferred contact details.</p></li>
+        <li><span class="step-number">02</span><h3>Admin coordinates</h3><p>An administrator reviews the request, assigns a doctor, and schedules a time.</p></li>
+        <li><span class="step-number">03</span><h3>Doctor records visit</h3><p>The doctor marks the visit complete and records any follow-up details.</p></li>
+        <li><span class="step-number">04</span><h3>Patient follows up</h3><p>Check the latest status and review details recorded for the visit.</p></li>
+      </ol>
+    </div>
+  </section>
 
-  <footer class="site-footer shell">
-    <span>Local-first engineering showcase</span>
-    <span><a href="/healthz">health</a> · <a href="/metrics">metrics</a></span>
-  </footer>
+  <section class="patient-section page-shell" id="for-patients" aria-labelledby="patient-title">
+    <div class="patient-copy"><p class="section-index">For patients</p><h2 id="patient-title">Know where your request stands.</h2><p>Create an account to request an appointment and keep its coordination details together. Sign in any time to review the latest status.</p><div class="hero-actions"><a class="button primary" href="<%= currentUser && currentUser.role === 'patient' ? '/appointments/new' : '/register' %>"><%= currentUser && currentUser.role === 'patient' ? 'Request an appointment' : 'Get started as a patient' %></a><a class="text-link" href="/login/patient">Already registered? Sign in</a></div></div>
+    <div class="patient-aside"><h3>What this demo includes</h3><ul><li>Patient account registration and sign-in</li><li>Appointment requests and status tracking</li><li>Staff scheduling and visit documentation</li></ul></div>
+  </section>
+
+  <section class="staff-section" id="for-staff" aria-labelledby="staff-title"><div class="page-shell staff-inner"><div><p class="section-index">For care team staff</p><h2 id="staff-title">Coordinate requests in one workspace.</h2><p>Staff accounts are provisioned for this local demonstration. Choose a role to sign in.</p></div><div class="staff-links"><a href="/login/doctor">Doctor sign in <span aria-hidden="true">→</span></a><a href="/login/admin">Administrator sign in <span aria-hidden="true">→</span></a></div></div></section>
+  <section class="demo-section page-shell" id="about-demo" aria-labelledby="demo-title"><div><p class="section-index">About this demonstration</p><h2 id="demo-title">A local-first engineering showcase.</h2></div><div><p>This application demonstrates care-coordination workflows using a local development setup. It is not connected to a campus health service, does not provide medical advice, and is not intended for real patient information.</p><p>Use fictional details when exploring the demo. Notification messages are shown through a local console adapter.</p></div></section>
+</main>
+<footer class="site-footer"><div class="site-footer-inner"><p>IITI Health Centre · Local engineering showcase</p><p>Not a live campus service. Do not enter real medical information.</p></div></footer>
 </body>
 </html>

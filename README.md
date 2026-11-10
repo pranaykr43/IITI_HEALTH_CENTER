@@ -75,7 +75,7 @@ npm start
 
 Open `http://127.0.0.1:3000`. The seed command prints local-only demo credentials. The SQLite file is created at `data/health-centre.sqlite` by default; it is ignored by Git.
 
-Configuration can be copied from [`example.env`](example.env):
+Configuration can be copied from [`example.env`](example.env) into `.env`. The app loads `.env` on startup; `.env` is ignored by Git and must never contain credentials that are committed:
 
 ```text
 PORT=3000

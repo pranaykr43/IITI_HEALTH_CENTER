@@ -1,4 +1,5 @@
 const path = require('node:path');
+require('dotenv').config();
 
 function parseBoolean(value, fallback) {
   if (value === undefined) return fallback;

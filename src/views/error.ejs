@@ -1,20 +1,3 @@
 <!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= title %> · Health Centre</title>
-  <link rel="stylesheet" href="/app.css">
-</head>
-<body class="muted-background">
-  <main class="shell narrow-shell">
-    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
-    <section class="panel">
-      <p class="eyebrow">Request boundary</p>
-      <h1><%= error.message || 'Something went wrong' %></h1>
-      <p class="hint">Request ID: <code><%= error.requestId || requestId || 'not available' %></code></p>
-      <a class="button secondary" href="/">Return home</a>
-    </section>
-  </main>
-</body>
-</html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><%= title %> · Health Centre</title><link rel="stylesheet" href="/app.css"></head>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/">IITI Health Centre</a></div></header><main class="content-shell"><section class="panel error-page"><p class="section-index">Request boundary</p><h1><%= error.message || 'Something went wrong' %></h1><p class="help-text">Request ID: <code><%= error.requestId || requestId || 'not available' %></code></p><a class="button secondary" href="/">Return home</a></section></main><footer class="site-footer"><div class="site-footer-inner"><p>Local engineering showcase</p><p>Not a live campus service</p></div></footer></body></html>
