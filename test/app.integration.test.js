@@ -51,7 +51,7 @@ test('active browser surface renders real navigation and authenticated dashboard
   const system = createTestSystem();
   const home = await request(system.app).get('/');
   assert.equal(home.status, 200);
-  assert.match(home.text, /Appointment coordination/);
+  assert.match(home.text, /Care coordination, made clear/);
   const patient = request.agent(system.app);
   const csrf = await login(patient, 'patient@health.local');
   const dashboard = await patient.get('/dashboard');

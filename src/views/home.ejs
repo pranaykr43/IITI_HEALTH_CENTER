@@ -18,25 +18,39 @@
     </nav>
   </header>
 
-  <main class="shell hero-grid">
-    <section class="hero-card">
-      <p class="eyebrow">Appointment coordination, rebuilt for correctness</p>
-      <h1>Care workflows that remain trustworthy when requests are repeated or systems fail.</h1>
-      <p class="lede">A focused demonstration of authenticated booking, transactional scheduling, explicit appointment states, and durable notification events.</p>
-      <div class="button-row">
-        <a class="button primary" href="/login">Open the demo</a>
-        <a class="button secondary" href="/readyz">Check readiness</a>
-      </div>
+  <main class="shell home-main">
+    <section class="home-intro">
+      <p class="eyebrow">IITI Health Centre</p>
+      <h1>Care coordination, made clear.</h1>
+      <p class="lede">Book care, manage consultations, and coordinate appointments through one secure Health Centre workspace.</p>
     </section>
-    <aside class="principles-card" aria-label="Engineering guarantees">
-      <p class="eyebrow">Built-in guarantees</p>
-      <ul class="principles">
-        <li><strong>Retry safe</strong><span>Idempotency keys return the original appointment.</span></li>
-        <li><strong>No double booking</strong><span>The database rejects a confirmed doctor/time collision.</span></li>
-        <li><strong>Auditable</strong><span>State changes and notification events are recorded together.</span></li>
-        <li><strong>Honest delivery</strong><span>Outbox events are at-least-once, not pretend exactly-once email.</span></li>
-      </ul>
-    </aside>
+    <section class="home-role-grid" aria-label="Choose your Health Centre portal">
+      <article class="panel role-card patient-card">
+        <span class="role-icon" aria-hidden="true">+</span>
+        <p class="eyebrow">For patients</p>
+        <h2>Patient Portal</h2>
+        <p>Book appointments, check appointment status, and access your prescriptions.</p>
+        <div class="role-actions"><a class="button primary" href="/login/patient">Patient Sign In</a><a href="/register">Create a patient account</a></div>
+      </article>
+      <article class="panel role-card">
+        <span class="role-icon doctor-icon" aria-hidden="true">✚</span>
+        <p class="eyebrow">For care providers</p>
+        <h2>Doctor Portal</h2>
+        <p>View assigned appointments, manage consultations, and record prescriptions.</p>
+        <div class="role-actions"><a class="button secondary" href="/login/doctor">Doctor Sign In</a><span class="muted">Accounts are provided by an administrator.</span></div>
+      </article>
+      <article class="panel role-card">
+        <span class="role-icon admin-icon" aria-hidden="true">▦</span>
+        <p class="eyebrow">For centre staff</p>
+        <h2>Administrator Portal</h2>
+        <p>Coordinate schedules, manage accounts, and oversee centre operations.</p>
+        <div class="role-actions"><a class="button secondary" href="/login/admin">Administrator Sign In</a><span class="muted">Administrator access is provisioned securely.</span></div>
+      </article>
+    </section>
+    <section class="home-assurance" aria-label="Service information">
+      <strong>Private by design</strong><span>Each portal shows only the information and actions assigned to that role.</span>
+      <a href="/readyz">Service status</a>
+    </section>
   </main>
 
   <footer class="site-footer shell">

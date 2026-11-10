@@ -13,6 +13,7 @@ const { createAppointmentService } = require('../services/appointment-service');
 const { createAuthService } = require('../services/auth-service');
 const { createAccountService } = require('../services/account-service');
 const { createPasswordResetService } = require('../services/password-reset-service');
+const { createGoogleOAuthService } = require('../services/google-oauth-service');
 const { createUnconfiguredPasswordResetAdapter } = require('../notifications/password-reset-adapter');
 const { createRouter, wantsJson } = require('./routes');
 
@@ -26,6 +27,7 @@ function createApp(options = {}) {
   }
   const passwordResetAdapter = options.passwordResetAdapter || createUnconfiguredPasswordResetAdapter({ logger });
   const accounts = createAccountService({ db, auth });
+  const googleOAuth = createGoogleOAuthService({ db, config, oauthClientFactory: options.oauthClientFactory });
   const passwordResets = createPasswordResetService({
     db,
     adapter: passwordResetAdapter,
@@ -131,7 +133,7 @@ function createApp(options = {}) {
     }
   }
 
-  app.use(createRouter({ auth, appointments, accounts, passwordResets, metrics, config, options }));
+  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config, options }));
 
   app.use((req, res) => {
     const error = new AppError('Route not found', 404, 'not_found');
@@ -154,7 +156,7 @@ function createApp(options = {}) {
     return res.status(statusCode).render('error', { title: 'Request failed', error: payload });
   });
 
-  return { app, db, auth, accounts, passwordResets, appointments, config, metrics, close: () => db.close() };
+  return { app, db, auth, accounts, passwordResets, googleOAuth, appointments, config, metrics, close: () => db.close() };
 }
 
 module.exports = { createApp };

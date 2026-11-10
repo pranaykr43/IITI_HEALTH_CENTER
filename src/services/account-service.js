@@ -1,4 +1,5 @@
-const { AuthorizationError, ConflictError, NotFoundError, ValidationError } = require('../errors');
+const crypto = require('node:crypto');
+const { AuthorizationError, AuthenticationError, ConflictError, NotFoundError, ValidationError } = require('../errors');
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ACCOUNT_ROLES = new Set(['patient', 'doctor', 'admin']);
@@ -72,6 +73,46 @@ function createAccountService({ db, auth, now = () => new Date() }) {
     return { ...target, account_status: nextStatus, unchanged: false };
   }).immediate;
 
+  const registerPatient = db.transaction((input) => {
+    const account = normalizeAccount({ ...input, role: 'patient' });
+    const user = auth.createUser(account);
+    db.prepare(`
+      INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
+      VALUES (NULL, 'patient.registered', 'user', ?, '{}', ?)
+    `).run(String(user.id), now().toISOString());
+    return { ...user, status: 'active' };
+  }).immediate;
+
+  const authenticateGooglePatient = db.transaction(({ email, name, subject }) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const normalizedSubject = String(subject || '').trim();
+    const safeName = String(name || '').trim().slice(0, 120) || normalizedEmail.split('@')[0];
+    if (!normalizedEmail || !normalizedSubject) throw new AuthenticationError('Google sign-in could not be verified');
+    const existing = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(normalizedEmail);
+    let user;
+    if (existing) {
+      if (existing.role !== 'patient' || existing.account_status !== 'active') {
+        throw new AuthenticationError('This Google account cannot be used for patient sign-in');
+      }
+      if (existing.google_subject && existing.google_subject !== normalizedSubject) {
+        throw new ConflictError('This email is already linked to a different Google account');
+      }
+      const claimed = db.prepare(`
+        UPDATE users SET google_subject = ? WHERE id = ? AND (google_subject IS NULL OR google_subject = ?)
+      `).run(normalizedSubject, existing.id, normalizedSubject);
+      if (claimed.changes !== 1) throw new ConflictError('This Google account is already linked to another user');
+      user = auth.findUserById(existing.id);
+    } else {
+      const randomPassword = crypto.randomBytes(48).toString('base64url');
+      user = auth.createUser({ email: normalizedEmail, name: safeName, role: 'patient', password: randomPassword, googleSubject: normalizedSubject });
+    }
+    db.prepare(`
+      INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
+      VALUES (?, 'patient.google_authenticated', 'user', ?, '{}', ?)
+    `).run(user.id, String(user.id), now().toISOString());
+    return { ...user, status: 'active' };
+  }).immediate;
+
   function listAccounts() {
     return db.prepare(`
       SELECT id, email, name, role, account_status AS status, created_at AS createdAt
@@ -81,6 +122,8 @@ function createAccountService({ db, auth, now = () => new Date() }) {
 
   return {
     createAccount,
+    registerPatient,
+    authenticateGooglePatient,
     changeStatus,
     listAccounts,
   };

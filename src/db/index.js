@@ -6,6 +6,7 @@ const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
 const OUTBOX_RELIABILITY_MIGRATION = 1;
 const ACCOUNT_LIFECYCLE_MIGRATION = 2;
 const NOTIFICATION_OPERATIONS_MIGRATION = 3;
+const GOOGLE_AUTH_MIGRATION = 4;
 
 function migrateLegacyIdempotencyTable(db) {
   const columns = db.pragma('table_info(idempotency_keys)');
@@ -127,6 +128,30 @@ function migrateNotificationOperations(db) {
   }).immediate();
 }
 
+function migrateGoogleAuthentication(db) {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= GOOGLE_AUTH_MIGRATION) return;
+  const columns = new Set(db.pragma('table_info(users)').map((column) => column.name));
+  db.transaction(() => {
+    if (!columns.has('google_subject')) db.exec('ALTER TABLE users ADD COLUMN google_subject TEXT');
+    db.exec(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_subject
+        ON users(google_subject) WHERE google_subject IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS google_oauth_transactions (
+        state_hash TEXT PRIMARY KEY,
+        nonce TEXT NOT NULL,
+        browser_hash TEXT NOT NULL,
+        code_verifier TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        used_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_google_oauth_expiry ON google_oauth_transactions(expires_at);
+    `);
+    db.pragma(`user_version = ${GOOGLE_AUTH_MIGRATION}`);
+  }).immediate();
+}
+
 function openDatabase(dbPath) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -144,6 +169,7 @@ function openDatabase(dbPath) {
   migrateOutboxReliability(db);
   migrateAccountLifecycle(db);
   migrateNotificationOperations(db);
+  migrateGoogleAuthentication(db);
   return db;
 }
 
@@ -157,4 +183,5 @@ module.exports = {
   migrateOutboxReliability,
   migrateAccountLifecycle,
   migrateNotificationOperations,
+  migrateGoogleAuthentication,
 };

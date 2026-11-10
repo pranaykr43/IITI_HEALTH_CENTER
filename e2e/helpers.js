@@ -11,10 +11,12 @@ async function signIn(page, role) {
   if (page.url().endsWith('/dashboard')) {
     await page.getByRole('button', { name: 'Sign out' }).click();
   }
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(emails[role]);
-  await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  const signInRole = role === 'admin' ? 'admin' : role.startsWith('doctor') ? 'doctor' : 'patient';
+  const label = signInRole === 'admin' ? 'Administrator' : signInRole[0].toUpperCase() + signInRole.slice(1);
+  await page.goto(`/login/${signInRole}`);
+  await page.getByLabel('Email address').fill(emails[role]);
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD);
+  await page.getByRole('button', { name: `Sign in as ${label}` }).click();
   await page.waitForURL('**/dashboard');
 }
 

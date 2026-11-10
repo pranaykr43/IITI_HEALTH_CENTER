@@ -24,8 +24,8 @@ test('verified backup is non-overwriting and staged restore preserves a safety c
   db.close();
 
   const result = await writeBackup(source, backup);
-  assert.equal(result.schemaVersion, 3);
-  assert.equal(validateDatabase(backup).schemaVersion, 3);
+  assert.equal(result.schemaVersion, 4);
+  assert.equal(validateDatabase(backup).schemaVersion, 4);
   await assert.rejects(writeBackup(source, backup), /already exists|EEXIST/i);
 
   const live = openDatabase(target);

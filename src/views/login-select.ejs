@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Health Centre</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body class="muted-background">
+  <main class="shell auth-choice-shell">
+    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
+    <section class="auth-choice-intro">
+      <p class="eyebrow">Welcome to the Health Centre</p>
+      <h1>How can we help you today?</h1>
+      <p class="lede small">Choose the sign-in option that matches your role.</p>
+      <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
+      <% if (error) { %><div class="alert error" role="alert"><%= error %></div><% } %>
+    </section>
+    <div class="auth-choice-grid">
+      <article class="panel role-card patient-card">
+        <span class="role-icon" aria-hidden="true">+</span>
+        <p class="eyebrow">For patients</p>
+        <h2>Patient Sign In</h2>
+        <p>Book appointments, check their status, and view your prescriptions.</p>
+        <div class="role-actions"><a class="button primary" href="/login/patient">Patient Sign In</a><a href="/register">Create a patient account</a></div>
+      </article>
+      <article class="panel role-card">
+        <span class="role-icon doctor-icon" aria-hidden="true">✚</span>
+        <p class="eyebrow">For care providers</p>
+        <h2>Doctor Sign In</h2>
+        <p>View assigned appointments, manage consultations, and record prescriptions.</p>
+        <div class="role-actions"><a class="button secondary" href="/login/doctor">Doctor Sign In</a><span class="muted">Accounts are provided by an administrator.</span></div>
+      </article>
+      <article class="panel role-card">
+        <span class="role-icon admin-icon" aria-hidden="true">▦</span>
+        <p class="eyebrow">For centre staff</p>
+        <h2>Administrator</h2>
+        <p>Coordinate schedules, manage accounts, and oversee centre operations.</p>
+        <div class="role-actions"><a class="button secondary" href="/login/admin">Administrator Sign In</a><span class="muted">Administrator access is provisioned securely.</span></div>
+      </article>
+    </div>
+    <p class="auth-choice-footer"><a href="/">← Return to Health Centre</a></p>
+  </main>
+</body>
+</html>

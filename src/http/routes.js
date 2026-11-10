@@ -58,7 +58,7 @@ function safeParse(schema, input) {
   return result.data;
 }
 
-function createRouter({ auth, appointments, accounts, passwordResets, metrics, config, options = {} }) {
+function createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config, options = {} }) {
   const router = express.Router();
   const passwordResetRequestLimiter = rateLimit({
     windowMs: 15 * 60_000,
@@ -73,6 +73,13 @@ function createRouter({ auth, appointments, accounts, passwordResets, metrics, c
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     message: { error: 'rate_limited', message: 'Please wait before trying another password reset.' },
+  });
+  const registrationLimiter = rateLimit({
+    windowMs: 60 * 60_000,
+    limit: options.registrationLimit ?? 5,
+    standardHeaders: 'draft-7',
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Please wait before creating another account.' },
   });
 
   const requireAuth = (req, res, next) => {
@@ -112,7 +119,100 @@ function createRouter({ auth, appointments, accounts, passwordResets, metrics, c
 
   router.get('/login', (req, res) => {
     if (req.session) return res.redirect('/dashboard');
-    return res.render('login', { title: 'Sign in', error: null, message: req.query.message || null });
+    return res.render('login-select', { title: 'Choose your sign-in', error: req.query.error || null, message: req.query.message || null });
+  });
+
+  const roleDetails = {
+    patient: { label: 'Patient', description: 'Book appointments, follow appointment status, and access prescriptions.' },
+    doctor: { label: 'Doctor', description: 'View assigned appointments, manage consultations, and record prescriptions.' },
+    admin: { label: 'Administrator', description: 'Schedule care, manage accounts, and oversee centre operations.' },
+  };
+  const authCsrfCookie = 'health_auth_csrf';
+  const setAuthFormToken = (res) => {
+    const token = crypto.randomBytes(24).toString('hex');
+    res.cookie(authCsrfCookie, token, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge: 15 * 60_000, path: '/' });
+    return token;
+  };
+  const validAnonymousCsrf = (req) => Boolean(req.cookies[authCsrfCookie] && req.body._csrf
+    && req.cookies[authCsrfCookie] === req.body._csrf);
+
+  router.get('/login/:role', (req, res) => {
+    const role = req.params.role;
+    if (!Object.hasOwn(roleDetails, role)) return res.status(404).render('error', { title: 'Not found', error: { message: 'Sign-in route not found' } });
+    if (req.session) return res.redirect('/dashboard');
+    return res.render('login', {
+      title: `${roleDetails[role].label} sign in`, role, roleInfo: roleDetails[role],
+      error: req.query.error || null, message: req.query.message || null,
+      googleEnabled: role === 'patient' && googleOAuth.enabled,
+      csrfToken: setAuthFormToken(res),
+    });
+  });
+
+  const registrationSchema = z.object({
+    email: z.string().trim().email().max(320),
+    name: z.string().trim().min(1).max(120),
+    password: z.string().min(12).max(200),
+    confirmPassword: z.string().min(12).max(200),
+  }).refine((input) => input.password === input.confirmPassword, { path: ['confirmPassword'], message: 'Passwords do not match' });
+  router.get('/register', (req, res) => {
+    if (req.session) return res.redirect('/dashboard');
+    return res.render('register', {
+      title: 'Create a patient account', error: null, googleEnabled: googleOAuth.enabled,
+      csrfToken: setAuthFormToken(res),
+    });
+  });
+  router.post('/auth/register/patient', registrationLimiter, (req, res, next) => {
+    try {
+      if (!validAnonymousCsrf(req)) throw new AuthorizationError('Your form expired. Refresh the page and try again.');
+      const input = safeParse(registrationSchema, req.body);
+      const patient = accounts.registerPatient(input);
+      const session = auth.createSession(patient.id);
+      res.cookie('health_session', session.id, {
+        httpOnly: true, sameSite: 'lax', secure: config.cookieSecure,
+        maxAge: config.sessionTtlSeconds * 1000, path: '/',
+      });
+      res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
+      if (wantsJson(req)) return res.status(201).json({ user: patient, csrfToken: session.csrfToken });
+      return res.redirect('/dashboard?message=Your%20patient%20account%20is%20ready.');
+    } catch (error) {
+      if (!wantsJson(req) && error instanceof AppError) return res.status(error.statusCode).render('register', {
+        title: 'Create a patient account', error: error.message, googleEnabled: googleOAuth.enabled,
+        csrfToken: setAuthFormToken(res),
+      });
+      return next(error);
+    }
+  });
+
+  router.get('/auth/google', (req, res, next) => {
+    try {
+      if (!googleOAuth.enabled) return res.redirect('/login/patient?error=Google%20sign-in%20is%20not%20configured%20yet.');
+      const browserToken = crypto.randomBytes(32).toString('base64url');
+      const authorization = googleOAuth.createAuthorizationRequest(browserToken);
+      res.cookie('health_google_browser', browserToken, {
+        httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge: 10 * 60_000, path: '/auth/google',
+      });
+      return res.redirect(authorization.url);
+    } catch (error) { return next(error); }
+  });
+  router.get('/auth/google/callback', async (req, res) => {
+    try {
+      if (req.query.error) throw new AuthenticationError('Google sign-in was cancelled or denied');
+      const identity = await googleOAuth.authenticateCallback({
+        state: String(req.query.state || ''), code: String(req.query.code || ''),
+        browserToken: req.cookies.health_google_browser || '',
+      });
+      const patient = accounts.authenticateGooglePatient(identity);
+      if (req.session) auth.destroySession(req.session.id);
+      const session = auth.createSession(patient.id);
+      res.clearCookie('health_google_browser', { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/auth/google' });
+      res.cookie('health_session', session.id, {
+        httpOnly: true, sameSite: 'lax', secure: config.cookieSecure,
+        maxAge: config.sessionTtlSeconds * 1000, path: '/',
+      });
+      return res.redirect('/dashboard?message=Signed%20in%20securely%20with%20Google.');
+    } catch (error) {
+      return res.redirect(`/login/patient?error=${encodeURIComponent(error instanceof AppError ? error.message : 'Google sign-in could not be completed. Try again or use your password.')}`);
+    }
   });
 
   router.get('/password/forgot', (req, res) => res.render('password-forgot', {
@@ -155,10 +255,15 @@ function createRouter({ auth, appointments, accounts, passwordResets, metrics, c
     }
   });
 
-  const loginHandler = (req, res, next) => {
+  const loginHandler = (expectedRole = null) => (req, res, next) => {
     try {
+      const browserForm = req.is('application/x-www-form-urlencoded');
+      if ((expectedRole || browserForm) && !validAnonymousCsrf(req)) throw new AuthorizationError('Your form expired. Refresh the page and try again.');
       const credentials = safeParse(loginSchema, req.body);
       const user = auth.authenticate(credentials.email, credentials.password);
+      if (expectedRole && user.role !== expectedRole) {
+        throw new AuthenticationError(`This account is not a ${roleDetails[expectedRole].label.toLowerCase()} account. Choose the correct sign-in option.`);
+      }
       if (req.session) auth.destroySession(req.session.id);
       const session = auth.createSession(user.id);
       res.cookie('health_session', session.id, {
@@ -168,16 +273,25 @@ function createRouter({ auth, appointments, accounts, passwordResets, metrics, c
         maxAge: config.sessionTtlSeconds * 1000,
         path: '/',
       });
+      res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
       if (wantsJson(req)) return res.status(200).json({ user, csrfToken: session.csrfToken });
       return res.redirect('/dashboard');
     } catch (error) {
-      if (!wantsJson(req) && error instanceof AppError) return res.status(error.statusCode).render('login', { title: 'Sign in', error: error.message, message: null });
+      if (!wantsJson(req) && error instanceof AppError && expectedRole) return res.status(error.statusCode).render('login', {
+        title: `${roleDetails[expectedRole].label} sign in`, role: expectedRole, roleInfo: roleDetails[expectedRole],
+        error: error.message, message: null, googleEnabled: expectedRole === 'patient' && googleOAuth.enabled,
+        csrfToken: setAuthFormToken(res),
+      });
       return next(error);
     }
   };
 
-  router.post('/auth/login', loginHandler);
-  router.post('/api/auth/login', loginHandler);
+  router.post('/auth/login', loginHandler());
+  router.post('/auth/login/:role', (req, res, next) => {
+    if (!Object.hasOwn(roleDetails, req.params.role)) return next(new ValidationError('Choose a valid sign-in role'));
+    return loginHandler(req.params.role)(req, res, next);
+  });
+  router.post('/api/auth/login', loginHandler());
 
   router.post('/auth/logout', requireAuth, requireCsrf, (req, res) => {
     auth.destroySession(req.session.id);

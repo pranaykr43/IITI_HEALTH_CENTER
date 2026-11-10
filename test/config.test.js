@@ -25,6 +25,16 @@ test('cookie secure environment parsing rejects unknown values', () => {
   }
 });
 
+test('Google OAuth is optional but validates complete configuration and secure callback URLs', () => {
+  const withoutGoogle = loadConfig({ nodeEnv: 'test', port: 3200 });
+  assert.equal(withoutGoogle.googleClientId, null);
+  assert.equal(withoutGoogle.googleCallbackUrl, null);
+  assert.throws(() => loadConfig({ googleClientId: 'client-only' }), /must be configured together/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', googleClientId: 'client', googleClientSecret: 'secret', googleCallbackUrl: 'http://health.example/auth/google/callback' }), /must use HTTPS/);
+  const configured = loadConfig({ nodeEnv: 'test', port: 3200, googleClientId: 'client', googleClientSecret: 'secret' });
+  assert.equal(configured.googleCallbackUrl, 'http://localhost:3200/auth/google/callback');
+});
+
 test('demo seeding is unavailable in production and refuses weak passwords', () => {
   const { seedDemoData } = require('../src/seed');
   assert.throws(() => seedDemoData({ config: { nodeEnv: 'production', demoPassword: undefined } }), /disabled in production/);

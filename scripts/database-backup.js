@@ -4,7 +4,7 @@ const path = require('node:path');
 const Database = require('better-sqlite3');
 const { loadConfig } = require('../src/config');
 
-const REQUIRED_SCHEMA_VERSION = 3;
+const REQUIRED_SCHEMA_VERSION = 4;
 
 function validateDatabase(filePath) {
   const db = new Database(filePath, { readonly: true, fileMustExist: true });
@@ -15,7 +15,7 @@ function validateDatabase(filePath) {
     }
     const version = db.pragma('user_version', { simple: true });
     if (version !== REQUIRED_SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}; expected ${REQUIRED_SCHEMA_VERSION}`);
-    const expected = ['users', 'appointments', 'outbox_events', 'password_reset_tokens', 'notification_worker_heartbeats'];
+    const expected = ['users', 'appointments', 'outbox_events', 'password_reset_tokens', 'notification_worker_heartbeats', 'google_oauth_transactions'];
     const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
     const missing = expected.filter((name) => !tables.has(name));
     if (missing.length) throw new Error(`Database is missing required tables: ${missing.join(', ')}`);

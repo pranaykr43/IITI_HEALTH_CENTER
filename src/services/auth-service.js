@@ -26,12 +26,12 @@ function createAuthService(db, config) {
     };
   }
 
-  function createUser({ email, name, role, password }) {
+  function createUser({ email, name, role, password, googleSubject = null }) {
     const passwordHash = bcrypt.hashSync(password, 12);
     try {
       const result = db.prepare(`
-        INSERT INTO users (email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?)
-      `).run(email.trim().toLowerCase(), name.trim(), role, passwordHash, new Date().toISOString());
+        INSERT INTO users (email, name, role, password_hash, created_at, google_subject) VALUES (?, ?, ?, ?, ?, ?)
+      `).run(email.trim().toLowerCase(), name.trim(), role, passwordHash, new Date().toISOString(), googleSubject);
       return publicUser(findUserById(result.lastInsertRowid));
     } catch (error) {
       if (String(error.message).includes('UNIQUE')) throw new ConflictError('A user with that email already exists');

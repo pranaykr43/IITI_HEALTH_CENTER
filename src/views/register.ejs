@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Health Centre</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/auth.js" defer></script>
+</head>
+<body class="muted-background">
+  <main class="shell narrow-shell auth-shell">
+    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
+    <section class="panel auth-panel" aria-labelledby="register-title">
+      <a class="back-link" href="/login">← All sign-in options</a>
+      <p class="eyebrow">Patient account</p>
+      <h1 id="register-title">Create your account</h1>
+      <p class="muted">Use your account to book appointments, follow care updates, and access prescriptions.</p>
+      <% if (error) { %><div class="alert error" role="alert"><%= error %></div><% } %>
+      <% if (googleEnabled) { %>
+        <a class="button google-button" href="/auth/google" data-submit-state><span class="google-g" aria-hidden="true">G</span>Continue with Google</a>
+        <div class="auth-divider"><span>or create an account with email</span></div>
+      <% } else { %>
+        <p class="google-disabled" role="note">Google sign-in is not configured for this installation. Create an account with email and password.</p>
+      <% } %>
+      <form method="post" action="/auth/register/patient" class="stack" data-auth-form>
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label for="name">Full name</label>
+        <input id="name" name="name" autocomplete="name" required maxlength="120" autofocus>
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" required maxlength="320">
+        <label for="password">Create a password <span class="field-hint">At least 12 characters</span></label>
+        <div class="password-field">
+          <input id="password" name="password" type="password" autocomplete="new-password" minlength="12" required maxlength="200">
+          <button class="password-toggle" type="button" data-password-toggle="password" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+        <label for="confirmPassword">Confirm password</label>
+        <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" minlength="12" required maxlength="200">
+        <button class="button primary full-width" type="submit" data-submit-button><span class="button-label">Create patient account</span><span class="button-loading" hidden>Creating your account…</span></button>
+      </form>
+      <p class="hint">Already registered? <a href="/login/patient">Patient Sign In</a></p>
+    </section>
+  </main>
+</body>
+</html>

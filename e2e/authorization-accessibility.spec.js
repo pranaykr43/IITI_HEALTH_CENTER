@@ -49,6 +49,8 @@ test('home, login, patient, admin, and doctor pages have no serious axe violatio
   const pages = [
     { url: '/', role: null },
     { url: '/login', role: null },
+    { url: '/login/patient', role: null },
+    { url: '/register', role: null },
     { url: '/password/forgot', role: null },
     { url: '/password/reset', role: null },
     { url: '/dashboard', role: 'patient' },
@@ -73,13 +75,13 @@ test('home, login, patient, admin, and doctor pages have no serious axe violatio
 test('desktop, tablet, and mobile layouts fit and support keyboard access', async ({ page }) => {
   for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 }, { width: 390, height: 844 }]) {
     await page.setViewportSize(viewport);
-    await page.goto('/login');
+    await page.goto('/login/patient');
     const dimensions = await page.evaluate(() => ({
       width: globalThis.document.documentElement.clientWidth,
       scrollWidth: globalThis.document.documentElement.scrollWidth,
     }));
     expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.width);
-    await page.getByLabel('Email').focus();
+    await page.getByLabel('Email address').focus();
     await page.keyboard.press('Tab');
     await expect(page.locator(':focus')).toHaveCount(1);
     await expect(page.locator(':focus')).toHaveAccessibleName(/password/i);

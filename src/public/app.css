@@ -98,5 +98,50 @@ td strong, td small { display: block; }
 .care-summary { display: grid; gap: .2rem; margin-top: .5rem; font-size: .85rem; color: var(--muted); }
 .link-button { color: var(--primary-dark); background: transparent; border: 0; padding: .35rem 0; font: inherit; font-weight: 700; cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.auth-shell { padding-bottom: 3rem; }
+.auth-panel { margin-top: 1.5rem; }
+.auth-panel h1 { margin-bottom: .75rem; }
+.back-link { display: inline-block; margin-bottom: 1.25rem; font-size: .9rem; font-weight: 700; }
+.password-field { position: relative; }
+.password-field input { padding-right: 4.5rem; }
+.password-toggle { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%); min-height: 2.15rem; padding: .3rem .55rem; border: 0; border-radius: 7px; color: var(--primary-dark); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.full-width { width: 100%; margin-top: .6rem; }
+.button-loading { align-items: center; gap: .4rem; }
+.google-button { width: 100%; gap: .75rem; color: #27313f; border-color: #c9d3df; background: #fff; }
+.google-button:hover { background: #f8fafc; }
+.google-g { font-family: Arial, sans-serif; font-size: 1.25rem; font-weight: 800; background: conic-gradient(from -45deg, #4285f4 0 25%, #34a853 25% 48%, #fbbc05 48% 72%, #ea4335 72% 86%, #4285f4 86%); color: transparent; background-clip: text; -webkit-background-clip: text; }
+.google-disabled { padding: .75rem .9rem; border: 1px solid #dbe2ea; border-radius: 10px; color: #526276; background: #f8fafc; font-size: .9rem; }
+.auth-divider { display: flex; align-items: center; gap: .75rem; margin: 1.1rem 0; color: var(--muted); font-size: .82rem; }
+.auth-divider::before, .auth-divider::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+.provisioning-note { margin: 1.2rem 0 0; padding: .75rem .9rem; border-left: 3px solid #9ab8de; color: #526276; background: #f5f8fc; font-size: .86rem; }
+.auth-choice-shell { padding: 2.5rem 0 3rem; }
+.auth-choice-intro { max-width: 720px; padding: 4rem 0 1.5rem; }
+.auth-choice-intro h1 { font-size: clamp(2.3rem, 5vw, 4rem); }
+.auth-choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.role-card { display: flex; min-height: 330px; flex-direction: column; align-items: flex-start; }
+.role-card h2 { margin: .1rem 0 .6rem; }
+.role-card > p:not(.eyebrow) { color: #536276; }
+.role-card.patient-card { border-color: #b8d2f6; background: linear-gradient(160deg, #f3f8ff, #fff 65%); }
+.role-icon { display: grid; width: 2.5rem; height: 2.5rem; place-items: center; margin-bottom: 1rem; border-radius: 12px; color: #1455aa; background: #deebff; font-size: 1.4rem; font-weight: 800; }
+.doctor-icon { color: #087355; background: #dff6ee; }
+.admin-icon { color: #7044a5; background: #f0e8fb; }
+.role-actions { display: grid; width: 100%; gap: .75rem; margin-top: auto; padding-top: 1.25rem; }
+.role-actions .button { width: 100%; }
+.role-actions > a:not(.button) { font-weight: 700; text-align: center; }
+.role-actions .muted { text-align: center; font-size: .83rem; }
+.auth-choice-footer { margin-top: 2rem; }
+.field-hint { color: var(--muted); font-size: .78rem; font-weight: 400; }
+.hint a { color: #172033; font-weight: 700; text-decoration: underline; text-underline-offset: .15em; }
+.home-main { padding-bottom: 3rem; }
+.home-intro { max-width: 780px; padding: clamp(3rem, 8vw, 6.5rem) 0 2.25rem; }
+.home-intro h1 { font-size: clamp(2.8rem, 6vw, 5rem); }
+.home-role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.home-role-grid .role-card { min-height: 330px; }
+.home-assurance { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin-top: 1.25rem; padding: 1rem 1.2rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.72); color: var(--muted); font-size: .9rem; }
+.home-assurance strong { color: var(--ink); }
+.home-assurance a { margin-left: auto; font-weight: 700; }
+button:disabled { cursor: wait; opacity: .78; }
+@media (max-width: 800px) { .home-role-grid { grid-template-columns: 1fr; } .home-role-grid .role-card { min-height: auto; } .home-intro { padding-top: 3rem; } }
+@media (max-width: 800px) { .auth-choice-grid { grid-template-columns: 1fr; } .role-card { min-height: auto; } .auth-choice-intro { padding-top: 2.5rem; } }
 @media (max-width: 800px) { .hero-grid { grid-template-columns: 1fr; padding: 2rem 0; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .dashboard-heading { align-items: start; flex-direction: column; } }
 @media (max-width: 520px) { .stats-grid { grid-template-columns: 1fr 1fr; } .site-footer { display: grid; gap: .5rem; } .header-actions { justify-content: end; } .user-chip { display: none; } }

@@ -9,3 +9,4 @@ bench/results/*.json
 npm-debug.log*
 playwright-report/
 test-results/
+.playwright-browsers/

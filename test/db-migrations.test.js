@@ -51,10 +51,12 @@ test('outbox reliability migration preserves old events and gives stale processi
   assert.ok(columns.includes('lease_expires_at'));
   assert.ok(columns.includes('last_error'));
   assert.ok(columns.includes('failed_at'));
-  assert.equal(db.pragma('user_version', { simple: true }), 3);
+  assert.equal(db.pragma('user_version', { simple: true }), 4);
   assert.ok(db.pragma('table_info(users)').some((column) => column.name === 'account_status'));
   assert.ok(db.pragma('table_info(outbox_events)').some((column) => column.name === 'redrive_count'));
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'notification_worker_heartbeats'").get().count, 1);
+  assert.ok(db.pragma('table_info(users)').some((column) => column.name === 'google_subject'));
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'google_oauth_transactions'").get().count, 1);
   assert.deepEqual(db.prepare('SELECT event_id, status, attempts FROM outbox_events ORDER BY id').all(), [
     { event_id: 'old-pending', status: 'pending', attempts: 0 },
     { event_id: 'old-processing', status: 'processing', attempts: 2 },
@@ -74,7 +76,7 @@ test('outbox reliability migration preserves old events and gives stale processi
 
   db.close();
   const reopened = openDatabase(dbPath);
-  assert.equal(reopened.pragma('user_version', { simple: true }), 3);
+  assert.equal(reopened.pragma('user_version', { simple: true }), 4);
   assert.equal(reopened.prepare('SELECT COUNT(*) AS count FROM outbox_events').get().count, 3);
   reopened.close();
 });

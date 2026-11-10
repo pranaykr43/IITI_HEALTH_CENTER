@@ -27,9 +27,10 @@ test('admin provisions a patient who completes password recovery', async ({ page
   await patientPage.getByLabel('Confirm new password').fill('Recovered-Strong-Password-88!');
   await patientPage.getByRole('button', { name: 'Change password' }).click();
   await expect(patientPage).toHaveURL(/\/login\?message=/);
-  await patientPage.getByLabel('Email').fill(email);
-  await patientPage.getByLabel('Password').fill('Recovered-Strong-Password-88!');
-  await patientPage.getByRole('button', { name: 'Sign in' }).click();
+  await patientPage.goto('/login/patient');
+  await patientPage.getByLabel('Email address').fill(email);
+  await patientPage.getByLabel('Password', { exact: true }).fill('Recovered-Strong-Password-88!');
+  await patientPage.getByRole('button', { name: 'Sign in as Patient' }).click();
   await patientPage.waitForURL('**/dashboard');
   await expect(patientPage.getByRole('heading', { name: 'Your appointments' })).toBeVisible();
 
@@ -41,10 +42,10 @@ test('admin provisions a patient who completes password recovery', async ({ page
   await expect(patientPage).toHaveURL(/\/login$/);
   await page.locator('tr').filter({ hasText: email }).getByRole('button', { name: 'Reactivate' }).click();
   await expect(page.locator('tr').filter({ hasText: email })).toContainText('active');
-  await patientPage.goto('/login');
-  await patientPage.getByLabel('Email').fill(email);
-  await patientPage.getByLabel('Password').fill('Recovered-Strong-Password-88!');
-  await patientPage.getByRole('button', { name: 'Sign in' }).click();
+  await patientPage.goto('/login/patient');
+  await patientPage.getByLabel('Email address').fill(email);
+  await patientPage.getByLabel('Password', { exact: true }).fill('Recovered-Strong-Password-88!');
+  await patientPage.getByRole('button', { name: 'Sign in as Patient' }).click();
   await patientPage.waitForURL('**/dashboard');
   await patientContext.close();
 });

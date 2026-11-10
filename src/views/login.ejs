@@ -5,24 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><%= title %> · Health Centre</title>
   <link rel="stylesheet" href="/app.css">
+  <script src="/auth.js" defer></script>
 </head>
 <body class="muted-background">
-  <main class="shell narrow-shell">
+  <main class="shell narrow-shell auth-shell">
     <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
-    <section class="panel auth-panel">
-      <p class="eyebrow">Secure access</p>
-      <h1>Sign in to your care workspace</h1>
+    <section class="panel auth-panel" aria-labelledby="auth-title">
+      <a class="back-link" href="/login">← All sign-in options</a>
+      <p class="eyebrow"><%= roleInfo.label %> portal</p>
+      <h1 id="auth-title"><%= roleInfo.label %> Sign In</h1>
+      <p class="muted"><%= roleInfo.description %></p>
       <% if (message) { %><div class="alert success" role="status"><%= message %></div><% } %>
       <% if (error) { %><div class="alert error" role="alert"><%= error %></div><% } %>
-      <form method="post" action="/auth/login" class="stack">
-        <label for="email">Email</label>
-        <input id="email" name="email" type="email" autocomplete="username" required maxlength="320">
+
+      <% if (role === 'patient') { %>
+        <% if (googleEnabled) { %>
+          <a class="button google-button" href="/auth/google" data-submit-state><span class="google-g" aria-hidden="true">G</span>Continue with Google</a>
+        <% } else { %>
+          <p class="google-disabled" role="note">Google sign-in is not configured for this installation. Use your email and password below.</p>
+        <% } %>
+        <div class="auth-divider"><span>or use your email</span></div>
+      <% } %>
+
+      <form method="post" action="/auth/login/<%= role %>" class="stack" data-auth-form>
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="username" required maxlength="320" autofocus>
         <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200">
-        <button class="button primary" type="submit">Sign in</button>
+        <div class="password-field">
+          <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="200">
+          <button class="password-toggle" type="button" data-password-toggle="password" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+        <button class="button primary full-width" type="submit" data-submit-button><span class="button-label">Sign in as <%= roleInfo.label %></span><span class="button-loading" hidden>Signing in…</span></button>
       </form>
+      <% if (role === 'patient') { %>
+        <p class="hint">New to the Health Centre? <a href="/register">Create a patient account</a></p>
+      <% } %>
       <p class="hint"><a href="/password/forgot">Forgot your password?</a></p>
-      <p class="hint">For the local demo, run <code>npm run seed</code>; credentials are printed by the command and are never stored in source.</p>
+      <% if (role === 'doctor' || role === 'admin') { %><p class="provisioning-note"><%= role === 'doctor' ? 'Doctor accounts are provided by the Health Centre administrator.' : 'Administrator accounts are provisioned through a trusted administrative process.' %></p><% } %>
     </section>
   </main>
 </body>
