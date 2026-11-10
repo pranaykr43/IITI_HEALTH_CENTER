@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Health Centre</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body class="muted-background">
+  <header class="site-header shell-wide">
+    <a class="brand" href="/dashboard">Health Centre<span class="brand-dot">.</span></a>
+    <a href="/dashboard">Back to dashboard</a>
+  </header>
+  <main class="shell narrow-shell">
+    <section class="panel">
+      <p class="eyebrow">Patient workflow</p>
+      <h1>Request an appointment</h1>
+      <p class="lede small">Your request is saved before any notification is attempted. If you retry with the same key, the original request is returned.</p>
+      <% if (error) { %><div class="alert error" role="alert"><%= error %></div><% } %>
+      <form method="post" action="/appointments" class="stack">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="idempotencyKey" value="<%= idempotencyKey %>">
+        <label for="phone">Phone number</label>
+        <input id="phone" name="phone" inputmode="tel" autocomplete="tel" required maxlength="24">
+        <label for="age">Age</label>
+        <input id="age" name="age" type="number" min="0" max="130" required>
+        <label for="symptoms">Symptoms</label>
+        <textarea id="symptoms" name="symptoms" rows="5" maxlength="2000" required></textarea>
+        <label for="daysWithSymptoms">Days with symptoms</label>
+        <input id="daysWithSymptoms" name="daysWithSymptoms" type="number" min="0" max="3650" required>
+        <button class="button primary" type="submit">Request appointment</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

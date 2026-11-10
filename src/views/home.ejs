@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · reliable care coordination</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/">Health Centre<span class="brand-dot">.</span></a>
+    <nav aria-label="Primary navigation">
+      <% if (currentUser) { %>
+        <a href="/dashboard">Dashboard</a>
+      <% } else { %>
+        <a href="/login">Sign in</a>
+      <% } %>
+    </nav>
+  </header>
+
+  <main class="shell hero-grid">
+    <section class="hero-card">
+      <p class="eyebrow">Appointment coordination, rebuilt for correctness</p>
+      <h1>Care workflows that remain trustworthy when requests are repeated or systems fail.</h1>
+      <p class="lede">A focused demonstration of authenticated booking, transactional scheduling, explicit appointment states, and durable notification events.</p>
+      <div class="button-row">
+        <a class="button primary" href="/login">Open the demo</a>
+        <a class="button secondary" href="/readyz">Check readiness</a>
+      </div>
+    </section>
+    <aside class="principles-card" aria-label="Engineering guarantees">
+      <p class="eyebrow">Built-in guarantees</p>
+      <ul class="principles">
+        <li><strong>Retry safe</strong><span>Idempotency keys return the original appointment.</span></li>
+        <li><strong>No double booking</strong><span>The database rejects a confirmed doctor/time collision.</span></li>
+        <li><strong>Auditable</strong><span>State changes and notification events are recorded together.</span></li>
+        <li><strong>Honest delivery</strong><span>Outbox events are at-least-once, not pretend exactly-once email.</span></li>
+      </ul>
+    </aside>
+  </main>
+
+  <footer class="site-footer shell">
+    <span>Local-first engineering showcase</span>
+    <span><a href="/healthz">health</a> · <a href="/metrics">metrics</a></span>
+  </footer>
+</body>
+</html>

@@ -1,28 +1,56 @@
 {
-  "dependencies": {
-    "body-parser": "^1.20.2",
-    "cookie-parser": "^1.4.6",
-    "cors": "^2.8.5",
-    "ejs": "^3.1.8",
-    "express": "^4.18.2",
-    "express-flash": "^0.0.2",
-    "express-session": "^1.17.3",
-    "hbs": "^4.2.0",
-    "mongoose": "^6.10.1",
-    "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.1",
-    "nodemon": "^2.0.21"
-  },
-  "name": "health_centre",
-  "version": "1.0.0",
+  "name": "health-centre",
+  "version": "2.0.0",
+  "private": true,
+  "description": "A reliable, local-first appointment coordination system.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node ./bin/www"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "seed": "node src/seed.js",
+    "test": "node --test",
+    "lint": "eslint src test scripts e2e playwright.config.js",
+    "check": "npm run lint && npm test",
+    "demo": "node scripts/demo.js",
+    "benchmark": "node scripts/benchmark.js",
+    "benchmark:http": "node scripts/http-benchmark.js",
+    "migrate:legacy": "node scripts/migrate-legacy-json.js",
+    "worker:notifications": "node src/workers/run-notification-worker.js",
+    "db:backup": "node scripts/database-backup.js",
+    "db:restore": "node scripts/database-restore.js",
+    "test:e2e": "node scripts/run-e2e.js",
+    "test:e2e:headed": "node scripts/run-e2e.js --headed",
+    "test:e2e:report": "playwright show-report"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": ""
+  "engines": {
+    "node": ">=18.12"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^9.6.0",
+    "cookie-parser": "^1.4.7",
+    "ejs": "^3.1.10",
+    "express": "^4.22.3",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^7.2.0",
+    "pino": "^9.14.0",
+    "pino-http": "^10.5.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@playwright/test": "^1.51.1",
+    "eslint": "^8.57.1",
+    "supertest": "^7.3.1"
+  },
+  "overrides": {
+    "playwright-core": "1.51.1"
+  },
+  "keywords": [
+    "appointments",
+    "express",
+    "sqlite",
+    "reliability"
+  ],
+  "license": "MIT"
 }

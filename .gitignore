@@ -1,0 +1,11 @@
+node_modules/
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+.env
+.env.*
+!example.env
+bench/results/*.json
+npm-debug.log*
+playwright-report/
+test-results/
