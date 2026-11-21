@@ -31,7 +31,7 @@ function createApp(options = {}) {
     ? createResendPasswordResetAdapter({ apiKey: config.resendApiKey, from: config.emailFrom })
     : createUnconfiguredPasswordResetAdapter({ logger }));
   const routesConfig = { ...config, emailEnabled: passwordResetAdapter.configured ?? config.emailEnabled };
-  const accounts = createAccountService({ db, auth });
+  const accounts = createAccountService({ db, auth, protectedEmails: config.demoProtectedEmails });
   const googleOAuth = createGoogleOAuthService({ db, config, oauthClientFactory: options.oauthClientFactory });
   const passwordResets = createPasswordResetService({
     db,

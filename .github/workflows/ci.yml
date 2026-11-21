@@ -19,6 +19,8 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm run demo
+      - name: Check deployment shell scripts
+        run: shellcheck -S error deploy/*.sh scripts/*.sh
       - run: npm audit --omit=dev
 
   e2e:
@@ -63,5 +65,8 @@ jobs:
           done
           docker logs health-centre-ci
           exit 1
+      - name: Showcase seed runs in the image (demo mode)
+        run: |
+          docker run --rm --platform linux/arm64             -e NODE_ENV=demo -e HEALTH_DB_PATH=/tmp/showcase.sqlite             -e HEALTH_DEMO_PASSWORD=Ci-Showcase-Password-1             -e MFA_ENCRYPTION_KEY="$(openssl rand -base64 32)"             health-centre:ci node scripts/seed-showcase.js
       - if: always()
         run: docker rm -f health-centre-ci || true

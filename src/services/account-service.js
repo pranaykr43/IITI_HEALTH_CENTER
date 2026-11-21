@@ -16,7 +16,8 @@ function normalizeAccount(input) {
   return { email, name, password, role };
 }
 
-function createAccountService({ db, auth, now = () => new Date() }) {
+function createAccountService({ db, auth, now = () => new Date(), protectedEmails = [] }) {
+  const protectedSet = new Set(protectedEmails.map((email) => String(email).toLowerCase()));
   const createAccount = db.transaction((actor, input, allowAdmin = false) => {
     if (!actor || actor.role !== 'admin') throw new AuthorizationError();
     const account = normalizeAccount(input);
@@ -49,8 +50,12 @@ function createAccountService({ db, auth, now = () => new Date() }) {
   const changeStatus = db.transaction((actor, targetUserId, nextStatus) => {
     if (!actor || actor.role !== 'admin') throw new AuthorizationError();
     if (!['active', 'disabled'].includes(nextStatus)) throw new ValidationError('Invalid account status');
-    const target = db.prepare('SELECT id, role, account_status FROM users WHERE id = ?').get(targetUserId);
+    const target = db.prepare('SELECT id, role, account_status, email FROM users WHERE id = ?').get(targetUserId);
     if (!target) throw new NotFoundError('Account not found');
+    if (nextStatus === 'disabled' && protectedSet.has(String(target.email).toLowerCase())) {
+      throw new ConflictError('Shared demo accounts cannot be disabled in the showcase. Create your own account to try this.');
+    }
+    delete target.email;
     if (target.account_status === nextStatus) return { ...target, unchanged: true };
 
     if (target.role === 'admin' && nextStatus === 'disabled') {

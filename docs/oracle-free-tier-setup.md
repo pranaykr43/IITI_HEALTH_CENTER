@@ -1,5 +1,7 @@
 # Oracle Cloud Always Free setup
 
+> For the quickest path, follow [deploy-free.md](deploy-free.md); its installer automates steps 5–7 below. This page keeps the detailed background.
+
 1. Create an Oracle Cloud account and carefully choose its home region. Sign-up may ask for a payment card and phone number. Do not select **Upgrade** or create resources without the **Always Free-eligible** label. Oracle's time-limited trial credits (up to $300 for up to 30 days) are separate from Always Free and are not required for this setup. [Oracle Free Tier](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier.htm)
 2. In the home region, inspect **Limits, Quotas and Usage**. Confirm A1 capacity. The Always Free A1 pool is up to 1,500 OCPU-hours and 9,000 GB-hours monthly (equivalent to 2 OCPUs and 12 GB); storage limits include 200 GB combined boot/block volume. If A1 says out of host capacity, wait or try another availability domain in the home region. Do not upgrade to paid to bypass capacity.
 3. Create one Ubuntu ARM64 VM with no more than 2 OCPUs and 12 GB RAM. Confirm the boot volume and any attached volume are Always Free. Open TCP 22 only to your administration IP and TCP 80/443 to the public internet. Keep SQLite and app ports private. Restrict SSH with key-based login; disable password SSH after confirming key access.

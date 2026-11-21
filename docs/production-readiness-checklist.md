@@ -11,7 +11,7 @@ Legend: ✅ verified on this branch · ⚠️ implemented but not verified end-t
 | | Item | Evidence / how to verify |
 |---|---|---|
 | 🔑 | Revoke the leaked Gmail app password (audit P0-1) | Owner confirms in Google account security settings |
-| ✅ | Dependencies install and tests pass on Node 24 | `npm ci && npm run check` (86 tests, lint clean) |
+| ✅ | Dependencies install and tests pass on Node 24 | `npm ci && npm run check` (87 tests, lint clean) |
 | ✅ | No known vulnerable dependencies | `npm audit` → 0 vulnerabilities |
 | ✅ | Browser suites pass | `npm run test:e2e` — 39/39 across Chromium, Firefox and WebKit |
 | ⚠️ | CI green on the merged commit (Node 24/26, three-browser e2e, ARM64 container smoke) | Check the GitHub Actions run for the merge commit |

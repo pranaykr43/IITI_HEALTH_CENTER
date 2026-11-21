@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       HEALTH_DB_PATH: /var/lib/health/data/health-centre.sqlite
       COOKIE_SECURE: "true"
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-production}
       DEMO_MODE: "true"
       HEALTH_DB_PATH: /var/lib/health/data/health-centre.sqlite
     volumes:

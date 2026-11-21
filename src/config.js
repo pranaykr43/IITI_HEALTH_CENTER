@@ -96,6 +96,9 @@ function loadConfig(overrides = {}) {
     if (nodeEnv === 'production' && (parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/')) throw new Error('PUBLIC_BASE_URL must be an HTTPS origin without credentials, path, query, or fragment');
   }
   config.emailEnabled = Boolean(config.resendApiKey && config.emailFrom);
+  // In a public showcase (NODE_ENV=demo) the shared demo logins are published, so they are
+  // protected from changes that would lock other visitors out until the nightly reset.
+  config.demoProtectedEmails = nodeEnv === 'demo' ? ['admin@health.local', 'doctor@health.local', 'patient@health.local'] : [];
   if (!['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'].includes(config.logLevel)) throw new Error('LOG_LEVEL must be a valid Pino level');
   return config;
 }

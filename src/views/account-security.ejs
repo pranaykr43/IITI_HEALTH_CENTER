@@ -29,6 +29,11 @@
           <% } %>
         </div>
       </section>
+    <% } else if (demoLocked) { %>
+      <section class="panel" aria-labelledby="mfa-demo-title">
+        <h2 id="mfa-demo-title">Not available on shared demo accounts</h2>
+        <p class="section-note">This showcase publishes these sign-ins so anyone can explore it, so two-factor setup is turned off for them. <a href="/register">Register your own patient account</a> to try two-factor authentication end to end.</p>
+      </section>
     <% } else { %>
       <section class="panel" aria-labelledby="mfa-setup-title">
         <div class="section-heading"><h2 id="mfa-setup-title">Set up two-factor authentication</h2><span class="status-badge status-requested"><%= required ? 'Required' : 'Off' %></span></div>

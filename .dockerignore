@@ -12,3 +12,4 @@
 !scripts/daily-backup.sh
 !scripts/run-host-backup.sh
 !scripts/install-backup-cron.sh
+!scripts/seed-showcase.js

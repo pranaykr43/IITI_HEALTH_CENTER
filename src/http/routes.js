@@ -546,7 +546,8 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const user = req.session.user;
       const status = mfa.status(user.id);
       let setup = null;
-      if (!status.enabled) {
+      const demoLocked = mfa.isDemoLocked(user);
+      if (!status.enabled && !demoLocked) {
         const pending = mfa.ensurePendingEnrollment(user);
         const qrSvg = await QRCode.toString(pending.otpauthUri, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
         setup = {
@@ -560,7 +561,7 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const required = mfa.isRequiredFor(user);
       if (wantsJson(req)) return res.json({ status, required, setup: setup && { secret: setup.secret, otpauthUri: setup.otpauthUri } });
       return res.render('account-security', {
-        title: 'Account security', status, setup, required,
+        title: 'Account security', status, setup, required, demoLocked,
         message: res.locals.flash.message, errorMessage: res.locals.flash.error,
       });
     } catch (error) {

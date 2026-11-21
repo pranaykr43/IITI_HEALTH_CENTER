@@ -40,6 +40,14 @@ function createMfaService({ db, config, now = () => Date.now() }) {
 
   const getRow = (userId) => db.prepare('SELECT * FROM user_mfa WHERE user_id = ?').get(userId);
 
+  const protectedSet = new Set((config.demoProtectedEmails || []).map((email) => String(email).toLowerCase()));
+  function isDemoLocked(user) {
+    return Boolean(user && protectedSet.has(String(user.email).toLowerCase()));
+  }
+  const assertNotDemoLocked = (user) => {
+    if (isDemoLocked(user)) throw new ConflictError('Two-factor setup is turned off for the shared demo accounts. Register your own patient account to try it.');
+  };
+
   function isRequiredFor(user) {
     return Boolean(config.staffMfaRequired && user && STAFF_ROLES.has(user.role));
   }
@@ -59,6 +67,7 @@ function createMfaService({ db, config, now = () => Date.now() }) {
   // Returns the not-yet-confirmed seed for this user, creating one if needed. Reusing the
   // pending seed keeps the QR code stable if the setup page is reloaded.
   const ensurePendingEnrollment = db.transaction((user) => {
+    assertNotDemoLocked(user);
     const row = getRow(user.id);
     if (row?.enabled_at) throw new ConflictError('Two-factor authentication is already enabled');
     let secret;
@@ -87,6 +96,7 @@ function createMfaService({ db, config, now = () => Date.now() }) {
   // Confirms the pending seed with a valid code, issues recovery codes, and signs out every
   // other session of the user, since those were established with a password alone.
   const confirmEnrollment = db.transaction((user, code, currentSessionDigest) => {
+    assertNotDemoLocked(user);
     const row = getRow(user.id);
     if (!row) throw new ConflictError('Start two-factor setup before confirming it');
     if (row.enabled_at) throw new ConflictError('Two-factor authentication is already enabled');
@@ -192,6 +202,7 @@ function createMfaService({ db, config, now = () => Date.now() }) {
   }
 
   return {
+    isDemoLocked,
     isRequiredFor,
     isEnabled,
     status,

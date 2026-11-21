@@ -117,3 +117,27 @@ test('admin pages are administrator-only and render for administrators', async (
   assert.equal(audit.status, 200);
   assert.ok(Array.isArray(audit.body.entries));
 });
+
+test('showcase mode protects the shared demo accounts from lock-outs, and only in showcase mode', async () => {
+  const key = crypto.randomBytes(32).toString('base64');
+  const demo = createApp({ config: { dbPath: ':memory:', nodeEnv: 'demo', logLevel: 'silent', mfaEncryptionKey: key, demoPassword: 'Demo-Password-123!' } });
+  systems.add(demo);
+  seedDemoData({ db: demo.db, config: demo.config });
+  const admin = request.agent(demo.app);
+  const csrf = (await admin.post('/api/auth/login').send({ email: 'admin@health.local', password: 'Demo-Password-123!' })).body.csrfToken;
+  const doctorId = demo.db.prepare("SELECT id FROM users WHERE email = 'doctor@health.local'").get().id;
+  const disable = await admin.post(`/admin/accounts/${doctorId}/disable`).set('Accept', 'application/json').set('x-csrf-token', csrf);
+  assert.equal(disable.status, 409);
+  assert.match(disable.body.message, /Shared demo accounts cannot be disabled/);
+  const security = await admin.get('/account/security').set('Accept', 'text/html');
+  assert.match(security.text, /Not available on shared demo accounts/);
+  assert.doesNotMatch(security.text, /data-mfa-secret/);
+  assert.equal((await admin.post('/account/mfa/enable').set('Accept', 'application/json').set('x-csrf-token', csrf).send({ code: '123456' })).status, 409);
+  assert.equal(demo.db.prepare('SELECT COUNT(*) AS count FROM user_mfa').get().count, 0);
+
+  const regular = createSystem();
+  const regularAdmin = request.agent(regular.app);
+  const regularCsrf = (await regularAdmin.post('/api/auth/login').send({ email: 'admin@health.local', password: 'ChangeMe123!' })).body.csrfToken;
+  const regularDoctorId = regular.db.prepare("SELECT id FROM users WHERE email = 'doctor@health.local'").get().id;
+  assert.equal((await regularAdmin.post(`/admin/accounts/${regularDoctorId}/disable`).set('Accept', 'application/json').set('x-csrf-token', regularCsrf)).status, 200);
+});

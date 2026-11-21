@@ -19,9 +19,11 @@ A campus health-centre appointment system: patients request visits, administrato
   - Expired data is purged hourly.
   - Status messages never come from the URL.
 - **Every privileged action is audited** in the same transaction as the change, with a filterable admin audit-log viewer.
-- **Verified in three browsers.** 86 unit/integration tests and 39 Playwright runs across Chromium, Firefox and WebKit with axe accessibility checks. CI also builds and smoke-tests an ARM64 container.
+- **Verified in three browsers.** 87 unit/integration tests and 39 Playwright runs across Chromium, Firefox and WebKit with axe accessibility checks. CI also builds and smoke-tests an ARM64 container.
 
 See [`docs/case-study.md`](docs/case-study.md) for the before-and-after engineering story, and [`docs/industry-readiness-audit.md`](docs/industry-readiness-audit.md) for the full audit.
+
+**Deploy it for free:** [`docs/deploy-free.md`](docs/deploy-free.md) walks through an Oracle Cloud Always Free VM plus a free DuckDNS hostname, with automatic HTTPS. After the console steps it's one command: `bash install.sh --host your-name.duckdns.org --mode showcase`.
 
 **Try it locally with realistic synthetic data:**
 
@@ -256,6 +258,8 @@ This milestone does not add Kubernetes, Kafka, Redis, microservices, a React rew
 The reliable appointment core is implemented and tested. Legacy features such as the original blood-donation and feedback pages are not part of the active runtime yet; they remain migration candidates rather than being presented as production-ready functionality.
 
 # Deployment preparation
+
+**Start with [docs/deploy-free.md](docs/deploy-free.md)**, the step-by-step zero-cost deployment guide with the one-command installer (`deploy/install.sh`), safe updater (`deploy/update.sh`) and showcase reset (`deploy/reset-showcase.sh`). The documents below cover the architecture and checklists in more depth.
 
 This repository includes a Docker Compose configuration for an independent **synthetic-data demo** only. It is not an official IIT Indore service and is not suitable for real medical information. Review [deployment architecture](docs/deployment-architecture.md), [Oracle setup](docs/oracle-free-tier-setup.md), [configuration](docs/production-configuration.md), [security checklist](docs/security-deployment-checklist.md), [backup and restore](docs/backup-and-restore-production.md), [operations](docs/operations-runbook.md), [hosting comparison](docs/free-hosting-comparison.md), and [go-live checklist](docs/go-live-checklist.md) before provisioning anything.
 

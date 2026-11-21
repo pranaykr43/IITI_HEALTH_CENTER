@@ -4,7 +4,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY src/ ./src/
-COPY scripts/bootstrap-admin.js scripts/database-backup.js scripts/database-restore.js scripts/daily-backup.sh ./scripts/
+COPY scripts/bootstrap-admin.js scripts/database-backup.js scripts/database-restore.js scripts/daily-backup.sh scripts/seed-showcase.js ./scripts/
 RUN chown -R node:node /app && mkdir -p /var/lib/health/data /var/lib/health/backups && chown -R node:node /var/lib/health
 
 FROM node:24-bookworm-slim AS runtime

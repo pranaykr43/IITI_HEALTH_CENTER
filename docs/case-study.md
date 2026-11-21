@@ -33,7 +33,7 @@ The interface is built around one artefact from a campus clinic: the **appointme
 
 ## Results
 
-- **Tests:** 86 unit and integration tests, plus 39 browser runs (13 journeys × 3 engines), all passing in CI with a dependency audit and an ARM64 container smoke test.
+- **Tests:** 87 unit and integration tests, plus 39 browser runs (13 journeys × 3 engines), all passing in CI with a dependency audit and an ARM64 container smoke test.
 - **Found and fixed during the audit:**
   - a credential leak;
   - an uninstallable dependency;

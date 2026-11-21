@@ -24,7 +24,7 @@ All P1 items and most P2/P3 items were fixed on this branch, each with regressio
 | Check | Result |
 |---|---|
 | `npm ci` on Node 24.22.3 | Succeeds (before: failed compiling `better-sqlite3@9.6.0`) |
-| `npm test` (Node test runner) | 86/86 passing (71 at audit time, +10 for the MFA follow-up, +5 for the dashboard/audit-log follow-up) |
+| `npm test` (Node test runner) | 87/87 passing (71 at audit time, +10 for the MFA follow-up, +6 for the dashboard, audit-log and showcase follow-ups) |
 | `npm run lint` | 0 problems |
 | `npm audit` (all dependencies) | 0 vulnerabilities (before: 2 high, Playwright) |
 | `npm run demo` | Idempotent retry, 200 schedule, 409 collision, 3 events processed |
