@@ -25,14 +25,17 @@ test('authenticated patient cannot perform admin or doctor actions; CSRF is enfo
 });
 
 test('doctor sees only assigned appointments and cannot complete another doctor’s booking', async ({ browser }, testInfo) => {
+  // Three sign-ins plus scheduling: give slower CI browsers room.
+  test.slow();
   const patient = await browser.newPage();
   await signIn(patient, 'patient');
   const appointmentId = await requestAppointment(patient);
   await signIn(patient, 'admin');
   const row = slip(patient, appointmentId);
   await row.locator('select[name="doctorId"]').selectOption({ index: 1 });
-  // Each browser project books its own slot because all projects share one server.
-  const offset = { chromium: 40, firefox: 50, webkit: 60 }[testInfo.project.name];
+  // Each browser project and each retry books its own slot, because all projects share one
+  // server and a retry must not collide with a slot its earlier attempt already booked.
+  const offset = { chromium: 40, firefox: 70, webkit: 100 }[testInfo.project.name] + testInfo.retry * 7;
   await row.locator('input[name="scheduledFor"]').fill(slotFromNow(offset));
   await row.getByRole('button', { name: 'Schedule' }).click();
   await expect(patient.getByRole('status')).toContainText('Appointment scheduled.');

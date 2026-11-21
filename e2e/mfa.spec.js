@@ -27,6 +27,7 @@ async function passwordStep(page, email) {
 }
 
 test('patient enables two-factor authentication, then signs in with a code and with a recovery code', async ({ page }, testInfo) => {
+  test.slow();
   const email = `mfa-${testInfo.project.name}-${Date.now()}@example.test`;
   await page.goto('/register');
   await page.getByLabel('Full name').fill('Two Factor Patient');

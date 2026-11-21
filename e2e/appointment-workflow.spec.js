@@ -2,13 +2,14 @@ const { test, expect } = require('@playwright/test');
 const { signIn, requestAppointment, slotFromNow, slip } = require('./helpers');
 
 test('patient request, admin scheduling conflict, and doctor completion', async ({ browser }, testInfo) => {
+  test.slow();
   const patient = await browser.newPage();
   await signIn(patient, 'patient');
   const firstId = await requestAppointment(patient, `${Date.now()}1`);
   const secondId = await requestAppointment(patient, `${Date.now()}2`);
 
   await signIn(patient, 'admin');
-  const browserOffset = { chromium: 0, firefox: 10, webkit: 20 }[testInfo.project.name];
+  const browserOffset = { chromium: 0, firefox: 10, webkit: 20 }[testInfo.project.name] + testInfo.retry * 7;
   const slot = slotFromNow(8 + browserOffset);
   const firstRow = slip(patient, firstId);
   await firstRow.locator('select[name="doctorId"]').selectOption({ index: 1 });

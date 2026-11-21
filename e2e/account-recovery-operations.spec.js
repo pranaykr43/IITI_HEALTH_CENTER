@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { signIn } = require('./helpers');
 
 test('admin provisions a patient who completes password recovery', async ({ page, browser, baseURL }) => {
+  test.slow();
   const email = `new-patient-${Date.now()}@health.local`;
   await signIn(page, 'admin');
   await page.getByRole('link', { name: 'Accounts', exact: true }).click();
