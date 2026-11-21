@@ -7,6 +7,10 @@ const OUTBOX_RELIABILITY_MIGRATION = 1;
 const ACCOUNT_LIFECYCLE_MIGRATION = 2;
 const NOTIFICATION_OPERATIONS_MIGRATION = 3;
 const GOOGLE_AUTH_MIGRATION = 4;
+const HASHED_SESSIONS_MIGRATION = 5;
+const CURRENT_SCHEMA_VERSION = HASHED_SESSIONS_MIGRATION;
+// Backups at or above this version can be restored; opening them applies newer migrations.
+const MINIMUM_RESTORABLE_SCHEMA_VERSION = GOOGLE_AUTH_MIGRATION;
 
 function migrateLegacyIdempotencyTable(db) {
   const columns = db.pragma('table_info(idempotency_keys)');
@@ -152,6 +156,39 @@ function migrateGoogleAuthentication(db) {
   }).immediate();
 }
 
+// Version 5 stores session token digests instead of raw tokens. Existing raw tokens
+// cannot be converted safely, so they are revoked and users sign in again once.
+function migrateHashedSessions(db) {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= HASHED_SESSIONS_MIGRATION) return;
+  db.transaction(() => {
+    db.exec(`
+      DELETE FROM sessions;
+      CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_appointments_scheduled ON appointments(status, scheduled_for);
+      CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_idempotency_created ON idempotency_keys(created_at);
+    `);
+    // Older outbox rows embedded the whole appointment, including symptoms and prescriptions.
+    // Reduce them to the identifier-only notification payload used from this version on.
+    db.exec(`
+      UPDATE outbox_events
+      SET payload_json = json_object(
+        'appointmentId', json_extract(payload_json, '$.id'),
+        'patientId', json_extract(payload_json, '$.patientId'),
+        'doctorId', json_extract(payload_json, '$.doctorId'),
+        'status', json_extract(payload_json, '$.status'),
+        'scheduledFor', json_extract(payload_json, '$.scheduledFor'),
+        'version', json_extract(payload_json, '$.version')
+      )
+      WHERE json_valid(payload_json) AND json_extract(payload_json, '$.id') IS NOT NULL
+        AND (json_type(payload_json, '$.symptoms') IS NOT NULL OR json_type(payload_json, '$.prescription') IS NOT NULL
+          OR json_type(payload_json, '$.patientPhone') IS NOT NULL);
+    `);
+    db.pragma(`user_version = ${HASHED_SESSIONS_MIGRATION}`);
+  }).immediate();
+}
+
 function openDatabase(dbPath) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -170,6 +207,7 @@ function openDatabase(dbPath) {
   migrateAccountLifecycle(db);
   migrateNotificationOperations(db);
   migrateGoogleAuthentication(db);
+  migrateHashedSessions(db);
   return db;
 }
 
@@ -178,10 +216,13 @@ function closeDatabase(db) {
 }
 
 module.exports = {
+  CURRENT_SCHEMA_VERSION,
+  MINIMUM_RESTORABLE_SCHEMA_VERSION,
   openDatabase,
   closeDatabase,
   migrateOutboxReliability,
   migrateAccountLifecycle,
   migrateNotificationOperations,
   migrateGoogleAuthentication,
+  migrateHashedSessions,
 };

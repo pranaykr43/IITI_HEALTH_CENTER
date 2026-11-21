@@ -1,0 +1,14 @@
+*
+!.dockerignore
+!Dockerfile
+!package.json
+!package-lock.json
+!src/
+!src/**
+!scripts/
+!scripts/bootstrap-admin.js
+!scripts/database-backup.js
+!scripts/database-restore.js
+!scripts/daily-backup.sh
+!scripts/run-host-backup.sh
+!scripts/install-backup-cron.sh

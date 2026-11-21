@@ -46,6 +46,9 @@ const resetCompletionSchema = z.object({
   confirmPassword: z.string().min(12).max(200),
 }).refine((input) => input.password === input.confirmPassword, { path: ['confirmPassword'], message: 'Passwords do not match' });
 
+const FLASH_COOKIE = 'health_flash';
+const FLASH_MAX_LENGTH = 500;
+
 function wantsJson(req) {
   return req.path.startsWith('/api') || (req.accepts('html') !== 'html' && req.accepts('json') === 'json');
 }
@@ -58,29 +61,68 @@ function safeParse(schema, input) {
   return result.data;
 }
 
+function safeEqual(left, right) {
+  const a = Buffer.from(String(left || ''));
+  const b = Buffer.from(String(right || ''));
+  return a.length > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function emailKey(req) {
+  return String(req.body?.email || '').trim().toLowerCase().slice(0, 320);
+}
+
 function createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config, options = {} }) {
   const router = express.Router();
+  const limiterDefaults = { standardHeaders: 'draft-7', legacyHeaders: false };
   const passwordResetRequestLimiter = rateLimit({
+    ...limiterDefaults,
     windowMs: 15 * 60_000,
     limit: options.passwordResetRequestLimit ?? 5,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
     message: { error: 'rate_limited', message: 'Please wait before requesting another password reset.' },
   });
   const passwordResetCompletionLimiter = rateLimit({
+    ...limiterDefaults,
     windowMs: 15 * 60_000,
     limit: options.passwordResetCompletionLimit ?? 10,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
     message: { error: 'rate_limited', message: 'Please wait before trying another password reset.' },
   });
   const registrationLimiter = rateLimit({
+    ...limiterDefaults,
     windowMs: 60 * 60_000,
     limit: options.registrationLimit ?? 5,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
     message: { error: 'rate_limited', message: 'Please wait before creating another account.' },
   });
+  // Failed sign-ins are throttled per client and email, and separately per email across
+  // all clients, so neither a single client nor a distributed guesser can brute force an
+  // account. Successful sign-ins do not count against either budget.
+  const loginRateLimitError = () => new AppError('Too many failed sign-in attempts. Wait 15 minutes and try again, or reset your password.', 429, 'rate_limited');
+  const loginClientLimiter = rateLimit({
+    ...limiterDefaults,
+    windowMs: 15 * 60_000,
+    limit: options.loginAttemptLimit ?? 10,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => `${req.ip}|${emailKey(req)}`,
+    handler: (req, res, next) => next(loginRateLimitError()),
+  });
+  const loginAccountLimiter = rateLimit({
+    ...limiterDefaults,
+    windowMs: 15 * 60_000,
+    limit: options.loginAccountAttemptLimit ?? 30,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => `account|${emailKey(req)}`,
+    handler: (req, res, next) => next(loginRateLimitError()),
+  });
+
+  const setFlash = (res, kind, text) => {
+    const value = Buffer.from(JSON.stringify({ kind, text: String(text).slice(0, FLASH_MAX_LENGTH) })).toString('base64url');
+    res.cookie(FLASH_COOKIE, value, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge: 60_000, path: '/' });
+  };
+  // Status messages travel in a short-lived HttpOnly cookie set by this server instead of the
+  // query string, so a crafted link cannot make the site display attacker-written text.
+  const redirectWithFlash = (res, location, kind, text) => {
+    setFlash(res, kind, text);
+    return res.redirect(location);
+  };
 
   const requireAuth = (req, res, next) => {
     if (!req.session) {
@@ -91,15 +133,18 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
   };
 
   const requireRole = (...roles) => (req, res, next) => {
-    if (!req.session) return next(new AuthenticationError());
+    if (!req.session) {
+      if (req.method === 'GET' && !wantsJson(req)) return res.redirect('/login');
+      return next(new AuthenticationError());
+    }
     if (!roles.includes(req.session.user.role)) return next(new AuthorizationError());
     return next();
   };
 
   const requireCsrf = (req, res, next) => {
     if (!req.session) return next(new AuthenticationError());
-    const token = req.get('x-csrf-token') || req.body._csrf;
-    if (!token || token !== req.session.csrfToken) return next(new AuthorizationError('Invalid CSRF token'));
+    const token = req.get('x-csrf-token') || req.body?._csrf;
+    if (!safeEqual(token, req.session.csrfToken)) return next(new AuthorizationError('Invalid CSRF token'));
     return next();
   };
 
@@ -108,10 +153,35 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     return res.status(statusCode).render(view, model);
   };
 
+  // Browser form posts that fail a business rule return to the dashboard with the reason
+  // instead of a bare error page; API clients keep structured JSON errors.
+  // Authentication and authorization failures keep their 401/403 status in every case.
+  const dashboardErrorOr = (req, res, next, error) => {
+    if (!wantsJson(req) && error instanceof AppError && ![401, 403].includes(error.statusCode)) {
+      return redirectWithFlash(res, '/dashboard', 'error', error.message);
+    }
+    return next(error);
+  };
+
   router.use((req, res, next) => {
     res.locals.currentUser = req.session ? req.session.user : null;
     res.locals.csrfToken = req.session ? req.session.csrfToken : '';
     res.locals.requestId = req.id;
+    res.locals.flash = { message: null, error: null };
+    const raw = req.cookies?.[FLASH_COOKIE];
+    if (raw) {
+      res.clearCookie(FLASH_COOKIE, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
+      try {
+        const parsed = JSON.parse(Buffer.from(String(raw).slice(0, 2048), 'base64url').toString('utf8'));
+        if (typeof parsed?.text === 'string') {
+          const text = parsed.text.slice(0, FLASH_MAX_LENGTH);
+          if (parsed.kind === 'error') res.locals.flash.error = text;
+          else res.locals.flash.message = text;
+        }
+      } catch {
+        // A malformed flash cookie is ignored.
+      }
+    }
     next();
   });
 
@@ -119,7 +189,7 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
 
   router.get('/login', (req, res) => {
     if (req.session) return res.redirect('/dashboard');
-    return res.render('login-select', { title: 'Choose your sign-in', error: req.query.error || null, message: req.query.message || null });
+    return res.render('login-select', { title: 'Choose your sign-in', error: res.locals.flash.error, message: res.locals.flash.message });
   });
 
   const roleDetails = {
@@ -133,19 +203,21 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     res.cookie(authCsrfCookie, token, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge: 15 * 60_000, path: '/' });
     return token;
   };
-  const validAnonymousCsrf = (req) => Boolean(req.cookies[authCsrfCookie] && req.body._csrf
-    && req.cookies[authCsrfCookie] === req.body._csrf);
+  const validAnonymousCsrf = (req) => safeEqual(req.cookies[authCsrfCookie], req.body?._csrf);
+  const sessionCookieOptions = () => ({
+    httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge: config.sessionTtlSeconds * 1000, path: '/',
+  });
+  const renderLogin = (res, role, { error = null, message = null, statusCode = 200 } = {}) => res.status(statusCode).render('login', {
+    title: `${roleDetails[role].label} sign in`, role, roleInfo: roleDetails[role],
+    error, message, googleEnabled: role === 'patient' && googleOAuth.enabled,
+    csrfToken: setAuthFormToken(res),
+  });
 
   router.get('/login/:role', (req, res) => {
     const role = req.params.role;
     if (!Object.hasOwn(roleDetails, role)) return res.status(404).render('error', { title: 'Not found', error: { message: 'Sign-in route not found' } });
     if (req.session) return res.redirect('/dashboard');
-    return res.render('login', {
-      title: `${roleDetails[role].label} sign in`, role, roleInfo: roleDetails[role],
-      error: req.query.error || null, message: req.query.message || null,
-      googleEnabled: role === 'patient' && googleOAuth.enabled,
-      csrfToken: setAuthFormToken(res),
-    });
+    return renderLogin(res, role, { error: res.locals.flash.error, message: res.locals.flash.message });
   });
 
   const registrationSchema = z.object({
@@ -167,13 +239,10 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const input = safeParse(registrationSchema, req.body);
       const patient = accounts.registerPatient(input);
       const session = auth.createSession(patient.id);
-      res.cookie('health_session', session.id, {
-        httpOnly: true, sameSite: 'lax', secure: config.cookieSecure,
-        maxAge: config.sessionTtlSeconds * 1000, path: '/',
-      });
+      res.cookie('health_session', session.id, sessionCookieOptions());
       res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
       if (wantsJson(req)) return res.status(201).json({ user: patient, csrfToken: session.csrfToken });
-      return res.redirect('/dashboard?message=Your%20patient%20account%20is%20ready.');
+      return redirectWithFlash(res, '/dashboard', 'message', 'Your patient account is ready.');
     } catch (error) {
       if (!wantsJson(req) && error instanceof AppError) return res.status(error.statusCode).render('register', {
         title: 'Create a patient account', error: error.message, googleEnabled: googleOAuth.enabled,
@@ -205,28 +274,25 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       if (req.session) auth.destroySession(req.session.id);
       const session = auth.createSession(patient.id);
       res.clearCookie('health_google_browser', { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/auth/google' });
-      res.cookie('health_session', session.id, {
-        httpOnly: true, sameSite: 'lax', secure: config.cookieSecure,
-        maxAge: config.sessionTtlSeconds * 1000, path: '/',
-      });
-      return res.redirect('/dashboard?message=Signed%20in%20securely%20with%20Google.');
+      res.cookie('health_session', session.id, sessionCookieOptions());
+      return redirectWithFlash(res, '/dashboard', 'message', 'Signed in securely with Google.');
     } catch (error) {
-      return res.redirect(`/login/patient?error=${encodeURIComponent(error instanceof AppError ? error.message : 'Google sign-in could not be completed. Try again or use your password.')}`);
+      return redirectWithFlash(res, '/login/patient', 'error', error instanceof AppError ? error.message : 'Google sign-in could not be completed. Try again or use your password.');
     }
   });
 
   router.get('/password/forgot', (req, res) => res.render('password-forgot', {
-    title: 'Reset password', sent: false, error: null,
+    title: 'Reset password', sent: false, error: null, emailEnabled: config.emailEnabled,
   }));
   router.post('/password/forgot', passwordResetRequestLimiter, async (req, res, next) => {
     try {
       const { email } = safeParse(resetRequestSchema, req.body);
       const baseUrl = config.publicBaseUrl || `http://127.0.0.1:${config.port}`;
       await passwordResets.requestReset(email, baseUrl);
-      return res.status(200).render('password-forgot', { title: 'Reset password', sent: true, error: null });
+      return res.status(200).render('password-forgot', { title: 'Reset password', sent: true, error: null, emailEnabled: config.emailEnabled });
     } catch (error) {
       if (!wantsJson(req) && error instanceof AppError) {
-        return res.status(error.statusCode).render('password-forgot', { title: 'Reset password', sent: false, error: error.message });
+        return res.status(error.statusCode).render('password-forgot', { title: 'Reset password', sent: false, error: error.message, emailEnabled: config.emailEnabled });
       }
       return next(error);
     }
@@ -244,7 +310,7 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
         });
       }
       if (wantsJson(req)) return res.status(200).json({ message: 'Password changed. Sign in again.' });
-      return res.redirect('/login?message=Password%20changed.%20Sign%20in%20again.');
+      return redirectWithFlash(res, '/login', 'message', 'Password changed. Sign in again.');
     } catch (error) {
       if (!wantsJson(req) && error instanceof AppError) {
         return res.status(error.statusCode).render('password-reset', {
@@ -255,43 +321,41 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     }
   });
 
-  const loginHandler = (expectedRole = null) => (req, res, next) => {
+  const loginHandler = (expectedRole = null) => async (req, res, next) => {
     try {
       const browserForm = req.is('application/x-www-form-urlencoded');
       if ((expectedRole || browserForm) && !validAnonymousCsrf(req)) throw new AuthorizationError('Your form expired. Refresh the page and try again.');
       const credentials = safeParse(loginSchema, req.body);
-      const user = auth.authenticate(credentials.email, credentials.password);
+      const user = await auth.authenticate(credentials.email, credentials.password);
       if (expectedRole && user.role !== expectedRole) {
         throw new AuthenticationError(`This account is not a ${roleDetails[expectedRole].label.toLowerCase()} account. Choose the correct sign-in option.`);
       }
       if (req.session) auth.destroySession(req.session.id);
       const session = auth.createSession(user.id);
-      res.cookie('health_session', session.id, {
-        httpOnly: true,
-        sameSite: 'lax',
-        secure: config.cookieSecure,
-        maxAge: config.sessionTtlSeconds * 1000,
-        path: '/',
-      });
+      res.cookie('health_session', session.id, sessionCookieOptions());
       res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
       if (wantsJson(req)) return res.status(200).json({ user, csrfToken: session.csrfToken });
       return res.redirect('/dashboard');
     } catch (error) {
-      if (!wantsJson(req) && error instanceof AppError && expectedRole) return res.status(error.statusCode).render('login', {
-        title: `${roleDetails[expectedRole].label} sign in`, role: expectedRole, roleInfo: roleDetails[expectedRole],
-        error: error.message, message: null, googleEnabled: expectedRole === 'patient' && googleOAuth.enabled,
-        csrfToken: setAuthFormToken(res),
-      });
       return next(error);
     }
   };
-
-  router.post('/auth/login', loginHandler());
-  router.post('/auth/login/:role', (req, res, next) => {
+  const loginErrorPage = (expectedRole) => (error, req, res, next) => {
+    if (!wantsJson(req) && error instanceof AppError && expectedRole) {
+      return renderLogin(res, expectedRole, { error: error.message, statusCode: error.statusCode });
+    }
+    return next(error);
+  };
+  const validateLoginRole = (req, res, next) => {
     if (!Object.hasOwn(roleDetails, req.params.role)) return next(new ValidationError('Choose a valid sign-in role'));
-    return loginHandler(req.params.role)(req, res, next);
-  });
-  router.post('/api/auth/login', loginHandler());
+    return next();
+  };
+
+  router.post('/auth/login', loginClientLimiter, loginAccountLimiter, loginHandler());
+  router.post('/auth/login/:role', validateLoginRole, loginClientLimiter, loginAccountLimiter,
+    (req, res, next) => loginHandler(req.params.role)(req, res, next),
+    (error, req, res, next) => loginErrorPage(Object.hasOwn(roleDetails, req.params.role) ? req.params.role : null)(error, req, res, next));
+  router.post('/api/auth/login', loginClientLimiter, loginAccountLimiter, loginHandler());
 
   router.post('/auth/logout', requireAuth, requireCsrf, (req, res) => {
     auth.destroySession(req.session.id);
@@ -310,8 +374,8 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       accounts: isAdmin ? accounts.listAccounts() : [],
       outboxMetrics: isAdmin ? appointments.getOutboxMetrics() : null,
       notificationActivity: isAdmin ? appointments.listRecentNotificationActivity() : [],
-      message: req.query.message || null,
-      errorMessage: req.query.error || null,
+      message: res.locals.flash.message,
+      errorMessage: res.locals.flash.error,
     };
     return renderOrJson(req, res, 'dashboard', model);
   });
@@ -321,12 +385,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const input = safeParse(allowAdmin ? adminAccountSchema : accountSchema, req.body);
       const created = accounts.createAccount(req.session.user, input, allowAdmin);
       if (wantsJson(req)) return res.status(201).json({ user: created });
-      return res.redirect(`/dashboard?message=${encodeURIComponent(`${created.role} account created.`)}`);
+      return redirectWithFlash(res, '/dashboard', 'message', `${created.role} account created.`);
     } catch (error) {
-      if (!wantsJson(req) && error instanceof AppError) {
-        return res.redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
-      }
-      return next(error);
+      return dashboardErrorOr(req, res, next, error);
     }
   };
 
@@ -340,12 +401,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const status = action === 'disable' ? 'disabled' : 'active';
       const account = accounts.changeStatus(req.session.user, Number(req.params.id), status);
       if (wantsJson(req)) return res.status(200).json({ account });
-      return res.redirect(`/dashboard?message=${encodeURIComponent(`Account ${status}.`)}`);
+      return redirectWithFlash(res, '/dashboard', 'message', `Account ${status}.`);
     } catch (error) {
-      if (!wantsJson(req) && error instanceof AppError) {
-        return res.redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
-      }
-      return next(error);
+      return dashboardErrorOr(req, res, next, error);
     }
   });
 
@@ -354,12 +412,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const { reason } = safeParse(redriveSchema, req.body);
       const result = appointments.redriveDeadEvent(req.session.user, req.params.eventId, reason);
       if (wantsJson(req)) return res.status(202).json({ event: result });
-      return res.redirect('/dashboard?message=Notification%20event%20queued%20for%20manual%20redrive.');
+      return redirectWithFlash(res, '/dashboard', 'message', 'Notification event queued for manual redrive.');
     } catch (error) {
-      if (!wantsJson(req) && error instanceof AppError) {
-        return res.redirect(`/dashboard?error=${encodeURIComponent(error.message)}`);
-      }
-      return next(error);
+      return dashboardErrorOr(req, res, next, error);
     }
   });
 
@@ -375,7 +430,7 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const result = appointments.createAppointment(req.session.user, req.body, idempotencyKey);
       metrics.appointmentsCreated += result.replayed ? 0 : 1;
       if (wantsJson(req)) return res.status(result.replayed ? 200 : 201).json(result);
-      return res.redirect(`/dashboard?message=${encodeURIComponent(result.replayed ? 'Retry accepted: the original appointment was returned.' : 'Appointment requested successfully.')}`);
+      return redirectWithFlash(res, '/dashboard', 'message', result.replayed ? 'Retry accepted: the original appointment was returned.' : 'Appointment requested successfully.');
     } catch (error) {
       if (!wantsJson(req) && error instanceof AppError) {
         return res.status(error.statusCode).render('appointment-new', {
@@ -399,9 +454,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const input = safeParse(scheduleSchema, req.body);
       const appointment = appointments.scheduleAppointment(req.session.user, req.params.id, input.doctorId, input.scheduledFor);
       if (wantsJson(req)) return res.status(200).json({ appointment });
-      return res.redirect('/dashboard?message=Appointment%20scheduled.');
+      return redirectWithFlash(res, '/dashboard', 'message', 'Appointment scheduled.');
     } catch (error) {
-      return next(error);
+      return dashboardErrorOr(req, res, next, error);
     }
   };
 
@@ -412,9 +467,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     try {
       const appointment = appointments.transitionAppointment(req.session.user, req.params.id, 'cancelled');
       if (wantsJson(req)) return res.status(200).json({ appointment });
-      return res.redirect('/dashboard?message=Appointment%20cancelled.');
+      return redirectWithFlash(res, '/dashboard', 'message', 'Appointment cancelled.');
     } catch (error) {
-      return next(error);
+      return dashboardErrorOr(req, res, next, error);
     }
   };
 
@@ -426,9 +481,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const prescription = safeParse(completionSchema, req.body);
       const appointment = appointments.completeAppointment(req.session.user, req.params.id, prescription);
       if (wantsJson(req)) return res.status(200).json({ appointment });
-      return res.redirect('/dashboard?message=Appointment%20completed.');
+      return redirectWithFlash(res, '/dashboard', 'message', 'Appointment completed.');
     } catch (error) {
-      return next(error);
+      return dashboardErrorOr(req, res, next, error);
     }
   };
 
@@ -438,4 +493,4 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
   return router;
 }
 
-module.exports = { createRouter, wantsJson };
+module.exports = { createRouter, wantsJson, safeEqual };

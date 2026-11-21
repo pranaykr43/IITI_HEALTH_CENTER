@@ -1,14 +1,14 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><%= title %> · Health Centre</title><link rel="stylesheet" href="/app.css"></head>
-<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/dashboard">IITI Health Centre</a><a class="text-link" href="/dashboard">Back to dashboard</a></div></header>
-<main class="content-shell"><div class="page-heading"><p class="section-index">Patient workflow · Local demo</p><h1>Request an appointment</h1><p>Your request is saved for staff review. An administrator coordinates the schedule and doctor assignment.</p></div>
-  <section class="panel appointment-form"><p class="notice">This demonstration is not connected to a live campus service. Use fictional information; do not enter real medical details.</p>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/dashboard">Health Centre</a><a class="text-link" href="/dashboard">Back to dashboard</a></div></header>
+<main class="content-shell"><div class="page-heading"><p class="section-index">Appointments</p><h1>Request an appointment</h1><p>Your request is saved for staff review. An administrator coordinates the schedule and doctor assignment.</p></div>
+  <section class="panel appointment-form"><p class="form-note">Use fictional information only. This independent academic demonstration is not affiliated with IIT Indore.</p>
     <% if (error) { %><div class="form-error" role="alert"><%= error %></div><% } %>
     <form method="post" action="/appointments" class="form-stack">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotencyKey" value="<%= idempotencyKey %>">
       <fieldset class="form-section"><legend>Contact details</legend><div class="form-grid"><div class="field"><label for="phone">Phone number</label><input id="phone" name="phone" inputmode="tel" autocomplete="tel" required maxlength="24"></div><div class="field"><label for="age">Age</label><input id="age" name="age" type="number" min="0" max="130" required></div></div></fieldset>
-      <fieldset class="form-section"><legend>What would you like help with?</legend><div class="form-grid"><div class="field field-full"><label for="symptoms">Brief description</label><textarea id="symptoms" name="symptoms" rows="5" maxlength="2000" required></textarea><span class="field-hint">For this demo, use a fictional description.</span></div><div class="field"><label for="daysWithSymptoms">Days with symptoms</label><input id="daysWithSymptoms" name="daysWithSymptoms" type="number" min="0" max="3650" required></div></div></fieldset>
+      <fieldset class="form-section"><legend>What would you like help with?</legend><div class="form-grid"><div class="field field-full"><label for="symptoms">Brief description</label><textarea id="symptoms" name="symptoms" rows="5" maxlength="2000" required></textarea><span class="field-hint">Use a fictional description; do not include real health information.</span></div><div class="field"><label for="daysWithSymptoms">Days with symptoms</label><input id="daysWithSymptoms" name="daysWithSymptoms" type="number" min="0" max="3650" required></div></div></fieldset>
       <div class="form-actions"><button class="button primary" type="submit">Submit appointment request</button><a href="/dashboard">Cancel</a></div>
     </form>
   </section>
-</main><footer class="site-footer"><div class="site-footer-inner"><p><a href="/">IITI Health Centre</a></p><p>Local engineering showcase · Not a live campus service</p></div></footer></body></html>
+</main><footer class="site-footer"><div class="site-footer-inner"><p><a href="/">Health Centre</a></p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore.</p></div></footer></body></html>

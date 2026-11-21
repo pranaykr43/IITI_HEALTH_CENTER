@@ -45,7 +45,7 @@ router.get('/mail/:id', async function(req, res,next) {
       secure: false, // true for 465, false for other ports
       auth: {
           user: 'gfg882004@gmail.com', // host email address
-          pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+           pass: process.env.SMTP_PASS,
 
 
       },
@@ -540,12 +540,12 @@ router.post("/doctorlogin",async function(req,res){
    try{ 
       // console.log(req.body);  
       const check=await logindoctor.findOne({
-       email:req.body.email,password:req.body.password
+       email:req.body.email
       }) 
       
-      if(check){ 
+      if(check){
        
-      
+      if(check.password===req.body.password){
          var data1;
          var data2;
          var data3;
@@ -595,6 +595,8 @@ router.post("/doctorlogin",async function(req,res){
              return res.status(400).json({err})
          }
       }else{
+         res.render("invalid3")
+      } }else{
          res.render("invalid3")
       }
    }catch{
@@ -869,7 +871,7 @@ router.post('/prescribe/:id/:id1/:id2',async (req, res, next)=> {
             secure: false, // true for 465, false for other ports
             auth: {
                 user: 'gfg882004@gmail.com', // host email address
-                pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+                 pass: process.env.SMTP_PASS,
       
       
             },
@@ -895,7 +897,7 @@ router.post('/prescribe/:id/:id1/:id2',async (req, res, next)=> {
  });
 
    
-    router.post("/adddoctor/:id..",async(req,res)=>{
+    router.post("/adddoctor/:id",async(req,res)=>{
       var name1=req.params.id;
      
       const data={
@@ -921,7 +923,7 @@ router.post('/prescribe/:id/:id1/:id2',async (req, res, next)=> {
          secure: false, // true for 465, false for other ports
          auth: {
              user: 'gfg882004@gmail.com', // host email address
-             pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+             pass: process.env.SMTP_PASS,
    
    
          },
@@ -1042,7 +1044,7 @@ let seconds = date_time.getSeconds();
       secure: false, // true for 465, false for other ports
       auth: {
           user: 'gfg882004@gmail.com', // host email address
-          pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+           pass: process.env.SMTP_PASS,
 
 
       },
@@ -1101,7 +1103,7 @@ let seconds = date_time.getSeconds();
       secure: false, // true for 465, false for other ports
       auth: {
           user: 'gfg882004@gmail.com', // host email address
-          pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+           pass: process.env.SMTP_PASS,
 
 
       },
@@ -1158,7 +1160,7 @@ let seconds = date_time.getSeconds();
       secure: false, // true for 465, false for other ports
       auth: {
           user: 'gfg882004@gmail.com', // host email address
-          pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+           pass: process.env.SMTP_PASS,
 
 
       },
@@ -1212,7 +1214,7 @@ router.post("/note/:id",async function(req,res){
       secure: false, // true for 465, false for other ports
       auth: {
           user: 'gfg882004@gmail.com', // host email address
-          pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+           pass: process.env.SMTP_PASS,
 
 
       },

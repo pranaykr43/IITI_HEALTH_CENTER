@@ -57,6 +57,7 @@ try {
     passwordResetRequestLimit: 20,
     passwordResetCompletionLimit: 30,
     passwordResetAdapter: {
+      configured: true,
       async deliver({ email, resetUrl }) { resetLinks.set(email.toLowerCase(), resetUrl); },
     },
     rateLimitLimit: 5_000,

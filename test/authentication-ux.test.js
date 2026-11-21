@@ -57,8 +57,8 @@ test('role selection clearly routes patient, doctor and administrator sign-in', 
   const { system } = createSystem();
   const choice = await request(system.app).get('/login');
   assert.equal(choice.status, 200);
-  assert.match(choice.text, /Patient Sign In/);
-  assert.match(choice.text, /Doctor Sign In/);
+  assert.match(choice.text, /Patient sign in/);
+  assert.match(choice.text, /Doctor sign in/);
   assert.match(choice.text, /Administrator/);
   assert.match(choice.text, /Create a patient account/);
   assert.equal((await request(system.app).get('/login/patient')).status, 200);
@@ -177,7 +177,8 @@ test('Google OAuth creates only patient accounts and rejects invalid identity cl
       const state = new URL(started.headers.location).searchParams.get('state');
       const result = await googleCallback(agent, state);
       assert.equal(result.status, 302);
-      assert.match(result.headers.location, /error=/);
+      assert.equal(result.headers.location, '/login/patient');
+      assert.match(String(result.headers['set-cookie']), /health_flash=/);
       assert.equal(system.db.prepare('SELECT COUNT(*) AS count FROM users WHERE email = ?').get('new.patient@example.test').count, 0);
     });
   }

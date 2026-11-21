@@ -2,6 +2,21 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { AuthenticationError, ConflictError } = require('../errors');
 
+// Session tokens are bearer credentials. Only their SHA-256 digest is stored, so a copied
+// database file or backup cannot be replayed as a live session.
+function sessionDigest(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+const SESSION_TOKEN_PATTERN = /^[0-9a-f]{64}$/;
+let timingEqualisationHash = null;
+function dummyPasswordHash() {
+  // Compared against when an email is unknown so that response time does not reveal
+  // whether an account exists. Generated lazily with the same cost as real hashes.
+  if (!timingEqualisationHash) timingEqualisationHash = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 12);
+  return timingEqualisationHash;
+}
+
 function createAuthService(db, config) {
   const findUserByEmail = (email) => db.prepare(`
     SELECT users.*, doctors.id AS doctor_id
@@ -39,9 +54,12 @@ function createAuthService(db, config) {
     }
   }
 
-  function authenticate(email, password) {
+  // Asynchronous comparison keeps the event loop responsive: a cost-12 bcrypt check
+  // takes hundreds of milliseconds and must not stall every other request.
+  async function authenticate(email, password) {
     const user = findUserByEmail(email);
-    if (!user || !bcrypt.compareSync(String(password || ''), user.password_hash) || user.account_status !== 'active') {
+    const matches = await bcrypt.compare(String(password || ''), user ? user.password_hash : dummyPasswordHash());
+    if (!user || !matches || user.account_status !== 'active') {
       throw new AuthenticationError('Invalid email or password');
     }
     return publicUser(user);
@@ -53,12 +71,13 @@ function createAuthService(db, config) {
     const createdAt = new Date();
     const expiresAt = new Date(createdAt.getTime() + config.sessionTtlSeconds * 1000).toISOString();
     db.prepare('INSERT INTO sessions (id, user_id, csrf_token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, userId, csrfToken, expiresAt, createdAt.toISOString());
+      .run(sessionDigest(id), userId, csrfToken, expiresAt, createdAt.toISOString());
     return { id, csrfToken, expiresAt };
   }
 
   function getSession(id) {
-    if (!id) return null;
+    if (!id || !SESSION_TOKEN_PATTERN.test(String(id))) return null;
+    const digest = sessionDigest(id);
     const session = db.prepare(`
       SELECT sessions.id, sessions.csrf_token, sessions.expires_at,
              users.id AS user_id, users.email, users.name, users.role, users.account_status,
@@ -66,18 +85,14 @@ function createAuthService(db, config) {
       FROM sessions JOIN users ON users.id = sessions.user_id
       LEFT JOIN doctors ON doctors.user_id = users.id
       WHERE sessions.id = ?
-    `).get(id);
+    `).get(digest);
     if (!session) return null;
-    if (session.account_status !== 'active') {
-      db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
-      return null;
-    }
-    if (new Date(session.expires_at) <= new Date()) {
-      db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    if (session.account_status !== 'active' || new Date(session.expires_at) <= new Date()) {
+      db.prepare('DELETE FROM sessions WHERE id = ?').run(digest);
       return null;
     }
     return {
-      id: session.id,
+      id,
       csrfToken: session.csrf_token,
       expiresAt: session.expires_at,
       user: publicUser({
@@ -92,7 +107,7 @@ function createAuthService(db, config) {
   }
 
   function destroySession(id) {
-    if (id) db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+    if (id) db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionDigest(id));
   }
 
   function destroyUserSessions(userId) {
@@ -115,4 +130,4 @@ function createAuthService(db, config) {
   };
 }
 
-module.exports = { createAuthService };
+module.exports = { createAuthService, sessionDigest };

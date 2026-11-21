@@ -11,6 +11,7 @@ const {
   assertTransition,
   normalizeBooking,
 } = require('../domain/appointments');
+const { parseScheduleInput, assertBookableSlot } = require('../domain/clinic-time');
 const { createConsoleNotificationAdapter } = require('../notifications/console-adapter');
 
 const MAX_MANUAL_REDRIVES = 3;
@@ -25,7 +26,7 @@ function isoAt(milliseconds) {
 
 function validateWorkerOptions({ leaseMs, maxAttempts, baseDelayMs, maxDelayMs }) {
   if (!Number.isInteger(leaseMs) || leaseMs < 1) throw new TypeError('leaseMs must be a positive integer');
-  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new TypeError('maxAttempts must be a positive integer');
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10) throw new TypeError('maxAttempts must be an integer from 1 to 10');
   if (!Number.isInteger(baseDelayMs) || baseDelayMs < 1) throw new TypeError('baseDelayMs must be a positive integer');
   if (!Number.isInteger(maxDelayMs) || maxDelayMs < baseDelayMs) throw new TypeError('maxDelayMs must be an integer >= baseDelayMs');
 }
@@ -69,11 +70,24 @@ function mapAppointment(row) {
   };
 }
 
+// Outbox events are retained and handed to delivery adapters, so they carry only the
+// identifiers and scheduling facts a notifier needs, never symptoms or prescriptions.
+function notificationPayload(appointment) {
+  return {
+    appointmentId: appointment.id,
+    patientId: appointment.patientId,
+    doctorId: appointment.doctorId,
+    status: appointment.status,
+    scheduledFor: appointment.scheduledFor,
+    version: appointment.version,
+  };
+}
+
 function getAppointment(db, id) {
   return mapAppointment(db.prepare('SELECT * FROM appointments WHERE id = ?').get(id));
 }
 
-function createAppointmentService(db) {
+function createAppointmentService(db, { clinicTimeZone = 'Asia/Kolkata', slotMinutes = 15 } = {}) {
   const createAppointment = db.transaction((actor, input, idempotencyKey) => {
     if (!actor || actor.role !== 'patient') throw new AuthorizationError('Only patients can create appointments');
     const booking = normalizeBooking({ ...input, email: actor.email });
@@ -105,7 +119,7 @@ function createAppointmentService(db) {
     db.prepare(`
       INSERT INTO outbox_events (event_id, event_type, aggregate_id, payload_json, available_at, created_at)
       VALUES (?, 'appointment.requested', ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), id, JSON.stringify(appointment), createdAt, createdAt);
+    `).run(crypto.randomUUID(), id, JSON.stringify(notificationPayload(appointment)), createdAt, createdAt);
     db.prepare(`
       INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
       VALUES (?, 'appointment.requested', 'appointment', ?, ?, ?)
@@ -117,14 +131,18 @@ function createAppointmentService(db) {
   const scheduleAppointment = db.transaction((actor, appointmentId, doctorId, scheduledFor) => {
     if (!actor || actor.role !== 'admin') throw new AuthorizationError('Only administrators can schedule appointments');
     if (!Number.isInteger(Number(doctorId))) throw new ValidationError('A valid doctor is required');
-    const parsedDate = new Date(scheduledFor);
-    if (!scheduledFor || Number.isNaN(parsedDate.getTime())) throw new ValidationError('A valid scheduled time is required');
+    const parsedDate = parseScheduleInput(scheduledFor, clinicTimeZone);
     if (parsedDate <= new Date()) throw new ValidationError('Scheduled time must be in the future');
 
     const doctor = db.prepare(`
-      SELECT doctors.id, users.name FROM doctors JOIN users ON users.id = doctors.user_id WHERE doctors.id = ?
+      SELECT doctors.id, doctors.start_time, doctors.end_time, doctors.available_days, users.name, users.account_status
+      FROM doctors JOIN users ON users.id = doctors.user_id WHERE doctors.id = ?
     `).get(Number(doctorId));
     if (!doctor) throw new NotFoundError('Doctor not found');
+    if (doctor.account_status !== 'active') throw new ConflictError('That doctor account is disabled and cannot receive appointments');
+    // Fixed-length, aligned slots make the unique (doctor_id, scheduled_for) index equivalent
+    // to a no-overlap constraint: two confirmed visits cannot share any part of a slot.
+    assertBookableSlot(parsedDate, { timeZone: clinicTimeZone, slotMinutes, doctor });
 
     const current = db.prepare('SELECT * FROM appointments WHERE id = ?').get(appointmentId);
     if (!current) throw new NotFoundError('Appointment not found');
@@ -150,7 +168,7 @@ function createAppointmentService(db) {
     db.prepare(`
       INSERT INTO outbox_events (event_id, event_type, aggregate_id, payload_json, available_at, created_at)
       VALUES (?, 'appointment.confirmed', ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), appointmentId, JSON.stringify(appointment), createdAt, createdAt);
+    `).run(crypto.randomUUID(), appointmentId, JSON.stringify(notificationPayload(appointment)), createdAt, createdAt);
     db.prepare(`
       INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
       VALUES (?, 'appointment.confirmed', 'appointment', ?, ?, ?)
@@ -179,7 +197,7 @@ function createAppointmentService(db) {
     db.prepare(`
       INSERT INTO outbox_events (event_id, event_type, aggregate_id, payload_json, available_at, created_at)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), `appointment.${nextStatus}`, appointmentId, JSON.stringify(updated), createdAt, createdAt);
+    `).run(crypto.randomUUID(), `appointment.${nextStatus}`, appointmentId, JSON.stringify(notificationPayload(updated)), createdAt, createdAt);
     db.prepare(`
       INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
       VALUES (?, ?, 'appointment', ?, '{}', ?)
@@ -204,7 +222,7 @@ function createAppointmentService(db) {
     db.prepare(`
       INSERT INTO outbox_events (event_id, event_type, aggregate_id, payload_json, available_at, created_at)
       VALUES (?, 'appointment.completed', ?, ?, ?, ?)
-    `).run(crypto.randomUUID(), appointmentId, JSON.stringify(updated), createdAt, createdAt);
+    `).run(crypto.randomUUID(), appointmentId, JSON.stringify(notificationPayload(updated)), createdAt, createdAt);
     db.prepare(`
       INSERT INTO audit_log (actor_user_id, action, aggregate_type, aggregate_id, metadata_json, created_at)
       VALUES (?, 'appointment.completed', 'appointment', ?, '{}', ?)
@@ -245,7 +263,8 @@ function createAppointmentService(db) {
       SELECT doctors.id, users.name, doctors.qualification, doctors.specialization,
              doctors.available_days AS availableDays, doctors.start_time AS startTime,
              doctors.end_time AS endTime
-      FROM doctors JOIN users ON users.id = doctors.user_id ORDER BY users.name
+      FROM doctors JOIN users ON users.id = doctors.user_id
+      WHERE users.account_status = 'active' ORDER BY users.name
     `).all();
   }
 
@@ -472,4 +491,4 @@ function createAppointmentService(db) {
   };
 }
 
-module.exports = { createAppointmentService, mapAppointment, hashPayload };
+module.exports = { createAppointmentService, mapAppointment, hashPayload, validateWorkerOptions, notificationPayload };

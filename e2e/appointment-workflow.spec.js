@@ -20,7 +20,7 @@ test('patient request, admin scheduling conflict, and doctor completion', async 
   await secondRow.locator('select[name="doctorId"]').selectOption({ index: 1 });
   await secondRow.locator('input[name="scheduledFor"]').fill(slot);
   await secondRow.getByRole('button', { name: 'Schedule' }).click();
-  await expect(patient.getByRole('heading', { name: 'That doctor is already booked for the requested time' })).toBeVisible();
+  await expect(patient.getByRole('alert')).toContainText('That doctor is already booked for the requested time');
 
   await signIn(patient, 'doctor');
   const assignedRow = patient.locator('tbody tr').filter({ hasText: firstId });
@@ -46,15 +46,15 @@ test('patient can cancel an appointment before scheduling', async ({ page }) => 
 test('appointment form blocks missing fields and rejects an invalid booking', async ({ page }) => {
   await signIn(page, 'patient');
   await page.goto('/appointments/new');
-  await page.getByRole('button', { name: 'Request appointment' }).click();
+  await page.getByRole('button', { name: 'Submit appointment request' }).click();
   await expect(page).toHaveURL(/\/appointments\/new$/);
   await expect(page.getByLabel('Phone number')).toBeFocused();
   await expect(page.getByLabel('Phone number')).toHaveAttribute('required', '');
 
   await page.getByLabel('Phone number').fill('123');
   await page.getByLabel('Age').fill('28');
-  await page.getByLabel('Symptoms', { exact: true }).fill('Persistent headache');
+  await page.getByLabel('Brief description', { exact: true }).fill('Persistent headache');
   await page.getByLabel('Days with symptoms').fill('2');
-  await page.getByRole('button', { name: 'Request appointment' }).click();
+  await page.getByRole('button', { name: 'Submit appointment request' }).click();
   await expect(page.getByRole('alert')).toContainText('A valid phone number is required');
 });

@@ -10,13 +10,13 @@ function percentile(values, p) {
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))];
 }
 
-function runOnce(iterations) {
+async function runOnce(iterations) {
   const system = createApp({
-    config: { dbPath: ':memory:', nodeEnv: 'benchmark', logLevel: 'silent' },
+    config: { dbPath: ':memory:', nodeEnv: 'test', logLevel: 'silent' },
     logger: pino({ level: 'silent' }),
   });
   seedDemoData({ db: system.db, config: system.config });
-  const actor = system.auth.authenticate('patient@health.local', 'ChangeMe123!');
+  const actor = await system.auth.authenticate('patient@health.local', 'ChangeMe123!');
   const latencies = [];
   for (let index = 0; index < iterations; index += 1) {
     const started = process.hrtime.bigint();
@@ -41,12 +41,13 @@ function runOnce(iterations) {
   return result;
 }
 
-function main() {
+async function main() {
   const iterations = Number(process.env.BENCHMARK_ITERATIONS || 1000);
   const runs = Number(process.env.BENCHMARK_RUNS || 3);
   if (!Number.isInteger(iterations) || iterations < 10) throw new Error('BENCHMARK_ITERATIONS must be an integer >= 10');
   if (!Number.isInteger(runs) || runs < 1) throw new Error('BENCHMARK_RUNS must be an integer >= 1');
-  const results = Array.from({ length: runs }, () => runOnce(iterations));
+  const results = [];
+  for (let run = 0; run < runs; run += 1) results.push(await runOnce(iterations));
   const output = {
     generatedAt: new Date().toISOString(),
     workload: 'create appointment service with unique idempotency keys in an isolated in-memory SQLite database',
@@ -65,4 +66,7 @@ function main() {
   console.log(JSON.stringify({ outputPath, ...output }, null, 2));
 }
 
-main();
+main().catch((error) => {
+  console.error(error.message);
+  process.exitCode = 1;
+});

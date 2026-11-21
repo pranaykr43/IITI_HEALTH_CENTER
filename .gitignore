@@ -2,6 +2,7 @@ node_modules/
 data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
+/backups/
 .env
 .env.*
 !example.env
@@ -10,3 +11,14 @@ npm-debug.log*
 playwright-report/
 test-results/
 .playwright-browsers/
+debug.log
+bench/results/latest.json
+
+# Legacy MongoDB exports can contain plaintext passwords and personal data.
+# Keep them out of version control; see docs/legacy-json-migration.md.
+*database.json
+databasep.json
+compass-connections.json
+
+# Local tooling state
+.impeccable/

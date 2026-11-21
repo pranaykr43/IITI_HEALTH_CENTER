@@ -3,8 +3,10 @@ const { signIn } = require('./helpers');
 
 test('home links to login, patient can sign in, protected route and logout work', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'IITI Health Centre' })).toBeVisible();
-  await expect(page.getByText('Not a live campus service', { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Health Centre' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Staff sign in' })).toBeVisible();
+  await expect(page.getByText('Independent academic demonstration; not affiliated with or endorsed by IIT Indore.', { exact: false })).toBeVisible();
+  await expect(page.getByText(/engineering showcase|local demo|try demo|explore demo/i)).toHaveCount(0);
   await page.getByRole('link', { name: 'Patient sign in' }).first().click();
   await expect(page).toHaveURL(/\/login\/patient$/);
   await expect(page.getByRole('heading', { name: 'Patient sign in' })).toBeVisible();
@@ -36,6 +38,7 @@ test('patient can create an account and enters the patient dashboard', async ({ 
   await page.getByLabel(/Create a password/).fill('Browser-test-strong-password-2026!');
   await page.getByLabel('Confirm password').fill('Browser-test-strong-password-2026!');
   await page.getByRole('button', { name: 'Create patient account' }).click();
-  await expect(page).toHaveURL(/\/dashboard\?message=/);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.getByRole('status')).toContainText('Your patient account is ready.');
   await expect(page.getByRole('heading', { name: 'Your appointments' })).toBeVisible();
 });

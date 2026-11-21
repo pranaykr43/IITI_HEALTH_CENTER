@@ -13,7 +13,7 @@ async function main() {
         secure: false, // true for 465, false for other ports
         auth: {
             user: 'gfg882004@gmail.com', // host email address
-            pass: 'tqeehhhqbzxwcsla', // host app password(use app password, if don't have , got to google accout> enable two step verification>  go to app password and generate password)
+             pass: process.env.SMTP_PASS, // configure SMTP_PASS outside the repository
 
 
         },

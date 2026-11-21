@@ -36,7 +36,7 @@ test('health and readiness endpoints expose a usable service', async () => {
 });
 
 test('production security headers retain HTTPS enforcement', async () => {
-  const system = createApp({ config: { dbPath: ':memory:', nodeEnv: 'production', cookieSecure: true, logLevel: 'silent' } });
+  const system = createApp({ config: { dbPath: ':memory:', nodeEnv: 'production', demoMode: true, cookieSecure: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', logLevel: 'silent' } });
   try {
     const health = await request(system.app).get('/healthz');
     assert.equal(health.status, 200);
@@ -51,7 +51,8 @@ test('active browser surface renders real navigation and authenticated dashboard
   const system = createTestSystem();
   const home = await request(system.app).get('/');
   assert.equal(home.status, 200);
-  assert.match(home.text, /Care coordination, made clear/);
+  assert.match(home.text, /<title>Health Centre<\/title>/);
+  assert.match(home.text, /not affiliated with or endorsed by IIT Indore/i);
   const patient = request.agent(system.app);
   const csrf = await login(patient, 'patient@health.local');
   const dashboard = await patient.get('/dashboard');
@@ -239,7 +240,7 @@ test('password recovery is generic, single use, revokes old sessions, and never 
   let deliveredUrl;
   const system = createApp({
     config: { dbPath: ':memory:', nodeEnv: 'test', logLevel: 'silent' },
-    passwordResetAdapter: { async deliver({ resetUrl }) { deliveredUrl = resetUrl; } },
+    passwordResetAdapter: { configured: true, async deliver({ resetUrl }) { deliveredUrl = resetUrl; } },
   });
   seedDemoData({ db: system.db, config: system.config });
   openSystems.add(system);
@@ -248,7 +249,7 @@ test('password recovery is generic, single use, revokes old sessions, and never 
   const existingSessionCount = system.db.prepare("SELECT COUNT(*) AS count FROM sessions WHERE user_id = (SELECT id FROM users WHERE email = 'patient@health.local')").get().count;
   const forgot = await request(system.app).post('/password/forgot').send({ email: 'patient@health.local' });
   assert.equal(forgot.status, 200);
-  assert.match(forgot.text, /If an active account matches/);
+  assert.match(forgot.text, /password reset email may arrive shortly/);
   assert.doesNotMatch(forgot.text, /token=/);
   const token = new URL(deliveredUrl).searchParams.get('token');
   assert.ok(token);
@@ -262,5 +263,5 @@ test('password recovery is generic, single use, revokes old sessions, and never 
 
   const unknown = await request(system.app).post('/password/forgot').send({ email: 'nobody@health.local' });
   assert.equal(unknown.status, forgot.status);
-  assert.match(unknown.text, /If an active account matches/);
+  assert.match(unknown.text, /password reset email may arrive shortly/);
 });

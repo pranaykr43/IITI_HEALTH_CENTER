@@ -40,3 +40,19 @@ test('password recovery stores only token hashes, supersedes old tokens, and enf
     db.close();
   }
 });
+
+test('password recovery response does not wait for a slow delivery provider', async () => {
+  const db = openDatabase(':memory:');
+  try {
+    db.prepare(`INSERT INTO users (email, name, role, password_hash, created_at)
+      VALUES ('slow-reset@example.test', 'Synthetic Reset', 'patient', 'hash', '2026-01-01T00:00:00.000Z')`).run();
+    let deliveryStarted = false;
+    const service = createPasswordResetService({
+      db,
+      adapter: { deliver() { deliveryStarted = true; return new Promise(() => {}); } },
+    });
+    await service.requestReset('slow-reset@example.test', 'https://health.example.test');
+    assert.equal(deliveryStarted, true);
+    assert.equal(db.prepare('SELECT COUNT(*) AS count FROM password_reset_tokens').get().count, 1);
+  } finally { db.close(); }
+});

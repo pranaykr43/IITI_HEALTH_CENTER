@@ -14,18 +14,20 @@ const { createAuthService } = require('../services/auth-service');
 const { createAccountService } = require('../services/account-service');
 const { createPasswordResetService } = require('../services/password-reset-service');
 const { createGoogleOAuthService } = require('../services/google-oauth-service');
-const { createUnconfiguredPasswordResetAdapter } = require('../notifications/password-reset-adapter');
-const { createRouter, wantsJson } = require('./routes');
+const { createHousekeepingService } = require('../services/housekeeping-service');
+const { formatClinicDateTime } = require('../domain/clinic-time');
+const { createUnconfiguredPasswordResetAdapter, createResendPasswordResetAdapter } = require('../notifications/password-reset-adapter');
+const { createRouter, wantsJson, safeEqual } = require('./routes');
 
 function createApp(options = {}) {
   const config = loadConfig(options.config || {});
   const db = options.db || openDatabase(config.dbPath);
-  const logger = options.logger || pino({ level: config.logLevel });
+  const logger = options.logger || pino({ level: config.logLevel, redact: { paths: ['req.headers.authorization', 'req.headers.cookie', 'req.headers.x-csrf-token', 'req.headers.set-cookie', 'password', 'token', 'resetUrl'], censor: '[REDACTED]' } });
   const auth = createAuthService(db, config);
-  if (config.nodeEnv === 'production' && options.passwordResetAdapter) {
-    throw new Error('Password reset delivery adapters are disabled in production until a reviewed provider is configured');
-  }
-  const passwordResetAdapter = options.passwordResetAdapter || createUnconfiguredPasswordResetAdapter({ logger });
+  const passwordResetAdapter = options.passwordResetAdapter || (config.emailEnabled
+    ? createResendPasswordResetAdapter({ apiKey: config.resendApiKey, from: config.emailFrom })
+    : createUnconfiguredPasswordResetAdapter({ logger }));
+  const routesConfig = { ...config, emailEnabled: passwordResetAdapter.configured ?? config.emailEnabled };
   const accounts = createAccountService({ db, auth });
   const googleOAuth = createGoogleOAuthService({ db, config, oauthClientFactory: options.oauthClientFactory });
   const passwordResets = createPasswordResetService({
@@ -33,15 +35,20 @@ function createApp(options = {}) {
     adapter: passwordResetAdapter,
     reportDeliveryFailure: () => logger.warn({ component: 'password-reset' }, 'password reset delivery adapter failed'),
   });
-  const appointments = createAppointmentService(db);
+  const appointments = createAppointmentService(db, { clinicTimeZone: config.clinicTimeZone, slotMinutes: config.slotMinutes });
+  const housekeeping = createHousekeepingService(db);
   const metrics = { requests: 0, errors: 0, appointmentsCreated: 0, startedAt: new Date().toISOString() };
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', config.trustProxyHops);
   app.set('views', path.join(__dirname, '..', 'views'));
   app.set('view engine', 'ejs');
   app.locals.appName = 'Health Centre';
   app.locals.metrics = metrics;
+  app.locals.clinicTimeZone = config.clinicTimeZone;
+  app.locals.slotMinutes = config.slotMinutes;
+  app.locals.formatDateTime = (value) => formatClinicDateTime(value, config.clinicTimeZone);
 
   app.use(helmet({
     strictTransportSecurity: config.nodeEnv === 'production' ? undefined : false,
@@ -95,8 +102,23 @@ function createApp(options = {}) {
       return res.status(503).json({ status: 'not_ready', database: 'unavailable', requestId: req.id });
     }
   });
-  app.get('/metrics', (req, res) => {
+  // Metrics reveal operational state. In production they are served only to a scraper
+  // presenting METRICS_TOKEN; without a token configured the endpoint does not exist.
+  app.get('/metrics', (req, res, next) => {
+    if (config.metricsToken) {
+      const presented = String(req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+      if (!safeEqual(presented, config.metricsToken)) {
+        res.set('WWW-Authenticate', 'Bearer realm="metrics"');
+        return res.status(401).json({ error: 'authentication_required', message: 'Metrics token required', requestId: req.id });
+      }
+    } else if (config.nodeEnv === 'production') {
+      return next();
+    }
     const uptimeSeconds = Math.floor(process.uptime());
+    const outbox = appointments.getOutboxMetrics();
+    const heartbeatAgeSeconds = outbox.workerLastSeenAt
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(outbox.workerLastSeenAt)) / 1000))
+      : -1;
     res.type('text/plain').send([
       '# HELP health_centre_http_requests_total Total HTTP requests observed.',
       '# TYPE health_centre_http_requests_total counter',
@@ -110,6 +132,15 @@ function createApp(options = {}) {
       '# HELP health_centre_process_uptime_seconds Process uptime.',
       '# TYPE health_centre_process_uptime_seconds gauge',
       `health_centre_process_uptime_seconds ${uptimeSeconds}`,
+      '# HELP health_centre_outbox_events Notification outbox events by status.',
+      '# TYPE health_centre_outbox_events gauge',
+      ...['pending', 'processing', 'failed', 'dead'].map((status) => `health_centre_outbox_events{status="${status}"} ${outbox[status]}`),
+      '# HELP health_centre_outbox_oldest_pending_age_seconds Age of the oldest pending notification event.',
+      '# TYPE health_centre_outbox_oldest_pending_age_seconds gauge',
+      `health_centre_outbox_oldest_pending_age_seconds ${outbox.oldestPendingAgeSeconds}`,
+      '# HELP health_centre_worker_heartbeat_age_seconds Seconds since the notification worker last polled; -1 if never seen.',
+      '# TYPE health_centre_worker_heartbeat_age_seconds gauge',
+      `health_centre_worker_heartbeat_age_seconds ${heartbeatAgeSeconds}`,
     ].join('\n') + '\n');
   });
 
@@ -133,7 +164,7 @@ function createApp(options = {}) {
     }
   }
 
-  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config, options }));
+  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config: routesConfig, options }));
 
   app.use((req, res) => {
     const error = new AppError('Route not found', 404, 'not_found');
@@ -156,7 +187,7 @@ function createApp(options = {}) {
     return res.status(statusCode).render('error', { title: 'Request failed', error: payload });
   });
 
-  return { app, db, auth, accounts, passwordResets, googleOAuth, appointments, config, metrics, close: () => db.close() };
+  return { app, db, auth, accounts, passwordResets, googleOAuth, appointments, housekeeping, config, metrics, logger, close: () => db.close() };
 }
 
 module.exports = { createApp };

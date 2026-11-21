@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [24.x, 26.x]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,6 +18,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run demo
       - run: npm audit --omit=dev
 
   e2e:
@@ -26,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 24.x
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox webkit
@@ -40,3 +41,26 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 14
+
+  arm64-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ARM64 image
+        run: docker buildx build --platform linux/arm64 --load -t health-centre:ci .
+      - name: Smoke-test ARM64 image
+        run: |
+          docker run -d --name health-centre-ci --platform linux/arm64 \
+            -e PUBLIC_BASE_URL=https://demo.example.test \
+            -e TRUST_PROXY_HOPS=1 -e DEMO_MODE=true \
+            health-centre:ci
+          for i in $(seq 1 30); do
+            if docker exec health-centre-ci node -e "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then exit 0; fi
+            sleep 2
+          done
+          docker logs health-centre-ci
+          exit 1
+      - if: always()
+        run: docker rm -f health-centre-ci || true

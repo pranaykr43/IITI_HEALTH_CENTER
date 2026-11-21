@@ -1,0 +1,11 @@
+# Zero-cost hosting comparison
+
+The requirement here is a hard ₹0/month recurring platform bill. Provider terms and availability can change; recheck the linked pricing pages and account quota immediately before provisioning. A domain name, if purchased, can still cost money.
+
+| Option | Can run this app unchanged? | Persistent data / worker | Cost and practical fit |
+|---|---|---|---|
+| OCI Always Free A1 | Yes, as an ARM64 Docker VM | Docker volumes for SQLite; separate worker process; Caddy TLS | Best match. Up to 2 OCPU / 12 GB A1 equivalent and 200 GB block storage in the home region, plus 20 GB object storage and 50k requests/month on an Always Free-only account. Capacity is not guaranteed and Oracle may reclaim idle compute under its published conditions. |
+| Cloudflare Workers + D1 + Queues | No; requires moving from Express/Node, SQLite and local worker to Workers APIs, D1 and Queues | Persistent D1 database; queue consumers supported | Free Workers quota includes 100,000 requests/day and 10 ms CPU per invocation; D1 Free includes 5 million rows read/day, 100,000 rows written/day, 5 GB total account storage, and 500 MB per database; Queues include 10,000 operations/day and 24-hour message retention. Good edge model after a rewrite, but not a quick deploy of this source. [Workers limits](https://developers.cloudflare.com/workers/platform/limits/), [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/), [D1 limits](https://developers.cloudflare.com/d1/platform/limits/), [Queues pricing](https://developers.cloudflare.com/queues/platform/pricing/). |
+| Render free web service | Not safely for this SQLite app | Free web service has no persistent disk; free Postgres expires after 30 days; no one-off jobs | Not suitable for durable SQLite or a continuously running worker. [Render free services](https://render.com/docs/free). |
+
+Cloudflare's current free quotas can be enough for a small synthetic demo, but the source needs a deliberate architecture rewrite and new E2E/backup model. For this repository as-is, OCI A1 plus Caddy and the existing SQLite worker is the most direct fit, subject to capacity and Always Free eligibility. No other host is recommended as “free” unless it offers durable storage and an always-on worker without a recurring charge under its current published terms.

@@ -26,7 +26,11 @@ The legacy code sent email before inserting the appointment, compared raw passwo
 The corrected design is documented in:
 
 - [`docs/engineering-audit.md`](docs/engineering-audit.md) — evidence-backed audit of the original project.
-- [`docs/current-engineering-review.md`](docs/current-engineering-review.md) — current-state audit, ratings, residual risks, and phased next work.
+- [`docs/industry-readiness-audit.md`](docs/industry-readiness-audit.md) — 2026-11 audit: findings with severity, evidence, fixes and verification.
+- [`docs/security-review.md`](docs/security-review.md) — threat model, verified controls, open security risks.
+- [`docs/engineering-roadmap.md`](docs/engineering-roadmap.md) — defects vs. improvements, prioritised.
+- [`docs/production-readiness-checklist.md`](docs/production-readiness-checklist.md) — what is verified, what is missing, alert thresholds.
+- [`docs/current-engineering-review.md`](docs/current-engineering-review.md) — earlier current-state audit, ratings, residual risks, and phased next work.
 - [`docs/technical-design.md`](docs/technical-design.md) — active architecture, invariants, trade-offs, and acceptance criteria.
 - [`docs/failure-analysis.md`](docs/failure-analysis.md) — failure scenarios and honest guarantees.
 - [`docs/architecture.mmd`](docs/architecture.mmd) — Mermaid component diagram.
@@ -61,7 +65,7 @@ The active code lives under `src/`. The old `routes/` and `views/` are retained 
 
 ## Requirements
 
-- Node.js 18.12 or newer
+- Node.js 24 or newer (CI also runs Node 26)
 - npm
 - No MongoDB, SMTP server, Redis, or other external service is required for the local demo.
 
@@ -185,11 +189,19 @@ The importer never reads the legacy login files or migrates passwords/accounts. 
 
 - `GET /healthz` — process liveness.
 - `GET /readyz` — database readiness.
-- `GET /metrics` — small Prometheus-compatible counter output.
+- `GET /metrics` — Prometheus-format HTTP, appointment, outbox and worker-heartbeat metrics. In production it returns 404 unless `METRICS_TOKEN` (32+ characters) is set, and then requires `Authorization: Bearer <token>`.
+
+## Scheduling rules
+
+- Times typed into the scheduling form are clinic wall-clock times in `CLINIC_TIMEZONE` (default `Asia/Kolkata`) and are displayed back in that zone, regardless of the server's own time zone.
+- Appointments occupy fixed `APPOINTMENT_SLOT_MINUTES` slots (default 15) that start on a slot boundary, inside the doctor's working hours and on a working day when the doctor's availability text can be parsed (for example `Monday-Friday`). Combined with the unique `(doctor_id, scheduled_for)` index this means confirmed visits for one doctor can never overlap.
+- Disabled doctors cannot receive new appointments.
 
 ## Security notes
 
-The repository originally contained a hard-coded SMTP credential and plaintext sample passwords. The active application does not use those values. Before sharing the repository or deploying any historical code, rotate any credential that may have been exposed and treat the legacy exports as untrusted sample data.
+The repository originally contained a hard-coded SMTP credential and plaintext sample passwords. The active application does not use those values, and the literal has been removed from the working tree, but **it remains in public git history and must be revoked by the account owner** (see `docs/industry-readiness-audit.md`, P0-1). Legacy JSON exports are excluded by `.gitignore`; treat any local copies as sensitive.
+
+Session tokens are stored only as SHA-256 digests, failed sign-ins are throttled per client and per account, status messages are never read from the URL, and notification events carry identifiers only. See `docs/security-review.md`.
 
 ## Deliberate non-goals
 
@@ -198,3 +210,9 @@ This milestone does not add Kubernetes, Kafka, Redis, microservices, a React rew
 ## Project status
 
 The reliable appointment core is implemented and tested. Legacy features such as the original blood-donation and feedback pages are not part of the active runtime yet; they remain migration candidates rather than being presented as production-ready functionality.
+
+# Deployment preparation
+
+This repository includes a Docker Compose configuration for an independent **synthetic-data demo** only. It is not an official IIT Indore service and is not suitable for real medical information. Review [deployment architecture](docs/deployment-architecture.md), [Oracle setup](docs/oracle-free-tier-setup.md), [configuration](docs/production-configuration.md), [security checklist](docs/security-deployment-checklist.md), [backup and restore](docs/backup-and-restore-production.md), [operations](docs/operations-runbook.md), [hosting comparison](docs/free-hosting-comparison.md), and [go-live checklist](docs/go-live-checklist.md) before provisioning anything.
+
+No cloud resources are created by this repository. Deployment requires owner-provisioned DNS/VM and an operator-managed `.env`. Start from `production.env.example`; never commit real values. Create the initial production admin only with interactive `npm run admin:create` after startup.

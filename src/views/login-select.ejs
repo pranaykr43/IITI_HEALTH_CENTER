@@ -1,14 +1,10 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><%= title %> · Health Centre</title><link rel="stylesheet" href="/app.css"></head>
-<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/">IITI Health Centre</a><a class="text-link" href="/">Return home</a></div></header>
+<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/">Health Centre</a><a class="text-link" href="/">Return home</a></div></header>
 <main class="content-shell">
-  <div class="page-heading"><p class="section-index">Sign in</p><h1>Choose your workspace</h1><p>Select the role associated with your Health Centre account.</p></div>
+  <div class="page-heading"><p class="section-index">Account access</p><h1>Sign in to Health Centre</h1><p>Choose the sign-in page for your account.</p></div>
   <% if (message) { %><div class="form-success" role="status"><%= message %></div><% } %>
   <% if (error) { %><div class="form-error" role="alert"><%= error %></div><% } %>
-  <div class="auth-choice-grid">
-    <article class="role-card"><h2>Patient</h2><p>Request appointments and follow their coordination status.</p><div class="role-actions"><a class="button primary" href="/login/patient">Patient sign in</a><a href="/register">Create an account</a></div></article>
-    <article class="role-card"><h2>Doctor</h2><p>Review assigned requests and record visit details.</p><div class="role-actions"><a class="button secondary" href="/login/doctor">Doctor sign in</a><span class="muted">Accounts are provisioned for the local demo.</span></div></article>
-    <article class="role-card"><h2>Administrator</h2><p>Coordinate schedules, accounts, and notification operations.</p><div class="role-actions"><a class="button secondary" href="/login/admin">Administrator sign in</a><span class="muted">Accounts are provisioned for the local demo.</span></div></article>
-  </div>
-  <p class="hero-note">Local engineering showcase · Not a live campus service</p>
-</main><footer class="site-footer"><div class="site-footer-inner"><p>Use fictional information in this demonstration.</p><p><a href="/">IITI Health Centre</a></p></div></footer></body></html>
+  <section class="access-section" aria-labelledby="patient-access-title"><h2 id="patient-access-title">Patients</h2><p>Request appointments and follow coordination updates.</p><div class="role-actions"><a class="button primary" href="/login/patient">Patient sign in</a><a href="/register">Create a patient account</a></div></section>
+  <section class="access-section staff-access" aria-labelledby="staff-access-title"><h2 id="staff-access-title">Care team</h2><p>Use the role associated with your provisioned account.</p><div class="staff-links staff-links-light"><a href="/login/doctor">Doctor sign in <span aria-hidden="true">→</span></a><a href="/login/admin">Administrator sign in <span aria-hidden="true">→</span></a></div></section>
+</main><footer class="site-footer"><div class="site-footer-inner"><p>Health Centre</p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore.</p></div></footer></body></html>

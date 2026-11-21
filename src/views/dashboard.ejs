@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="site-header"><div class="site-header-inner">
-    <a class="brand" href="/">IITI Health Centre</a>
+    <a class="brand" href="/">Health Centre</a>
     <div class="header-actions">
       <span class="user-chip"><%= currentUser.name %> · <%= currentUser.role %></span>
       <form method="post" action="/auth/logout">
@@ -23,7 +23,7 @@
     <% if (errorMessage) { %><div class="form-error" role="alert"><%= errorMessage %></div><% } %>
     <section class="dashboard-heading">
       <div>
-        <p class="section-index">Local demo · <%= currentUser.role %> workspace</p>
+        <p class="section-index"><%= currentUser.role %> workspace</p>
         <h1><%= currentUser.role === 'patient' ? 'Your appointments' : currentUser.role === 'doctor' ? 'Assigned care' : 'Scheduling desk' %></h1>
       </div>
       <% if (currentUser.role === 'patient') { %><a class="button primary" href="/appointments/new">New appointment</a><% } %>
@@ -50,8 +50,8 @@
                 <tr>
                   <td><strong><%= currentUser.role === 'patient' ? 'You' : item.patientName %></strong><small><%= item.id %></small></td>
                   <td><span class="status-badge status-<%= item.status %>"><%= item.status %></span></td>
-                  <td><%= new Date(item.requestedAt).toLocaleString() %></td>
-                  <td><strong><%= item.doctorName || 'Awaiting assignment' %></strong><%= item.scheduledFor ? new Date(item.scheduledFor).toLocaleString() : 'Not scheduled' %>
+                  <td><%= formatDateTime(item.requestedAt) %></td>
+                  <td><strong><%= item.doctorName || 'Awaiting assignment' %></strong><%= item.scheduledFor ? formatDateTime(item.scheduledFor) : 'Not scheduled' %>
                     <% if (currentUser.role === 'patient' && item.status === 'completed') { %><span class="care-summary"><strong>Visit summary</strong><% if (item.prescription.test) { %><span>Test: <%= item.prescription.test %></span><% } %><% if (item.prescription.medicine) { %><span>Medicine: <%= item.prescription.medicine %></span><% } %><% if (item.prescription.advice) { %><span>Advice: <%= item.prescription.advice %></span><% } %></span><% } %>
                   </td>
                   <% if (currentUser.role !== 'patient') { %><td><strong><%= item.patientAge %> years · <%= item.patientPhone %></strong><span><%= currentUser.role === 'doctor' ? item.symptoms : 'Patient information is available to the assigned care team.' %></span></td><% } %>
@@ -60,9 +60,10 @@
                       <form method="post" action="/admin/appointments/<%= item.id %>/schedule" class="inline-form">
                         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
                         <label class="sr-only" for="doctor-<%= item.id %>">Doctor</label>
-                        <select id="doctor-<%= item.id %>" name="doctorId" required><option value="">Doctor</option><% doctors.forEach((doctor) => { %><option value="<%= doctor.id %>"><%= doctor.name %></option><% }) %></select>
-                        <label class="sr-only" for="time-<%= item.id %>">Scheduled time</label>
-                        <input id="time-<%= item.id %>" name="scheduledFor" type="datetime-local" required>
+                        <select id="doctor-<%= item.id %>" name="doctorId" required><option value="">Doctor</option><% doctors.forEach((doctor) => { %><option value="<%= doctor.id %>"><%= doctor.name %> · <%= doctor.availableDays %> <%= doctor.startTime %>–<%= doctor.endTime %></option><% }) %></select>
+                        <label class="sr-only" for="time-<%= item.id %>">Scheduled time (clinic time, <%= clinicTimeZone %>)</label>
+                        <input id="time-<%= item.id %>" name="scheduledFor" type="datetime-local" step="<%= slotMinutes * 60 %>" required title="Clinic time (<%= clinicTimeZone %>), <%= slotMinutes %>-minute slots">
+                        <p class="field-hint-inline">Clinic time (<%= clinicTimeZone %>) · <%= slotMinutes %>-minute slots</p>
                         <button class="button small-button primary" type="submit">Schedule</button>
                       </form>
                     <% } else if (currentUser.role === 'doctor' && item.status === 'confirmed') { %>
@@ -116,7 +117,7 @@
             <tbody><% accounts.forEach((account) => { %><tr>
               <td><%= account.name %></td><td><%= account.email %></td><td><%= account.role %></td>
               <td><span class="status-badge status-<%= account.status %>"><%= account.status %></span></td>
-              <td><%= new Date(account.createdAt).toLocaleString() %></td>
+              <td><%= formatDateTime(account.createdAt) %></td>
               <td><% if (account.status === 'active') { %>
                 <form method="post" action="/admin/accounts/<%= account.id %>/disable"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button danger" type="submit">Disable</button></form>
               <% } else { %>
@@ -136,7 +137,7 @@
           <div class="stat-card"><span>Dead</span><strong><%= outboxMetrics.dead %></strong></div>
           <div class="stat-card"><span>Total attempts</span><strong><%= outboxMetrics.attempts %></strong></div>
         </div>
-        <p class="hint">Oldest pending event: <%= outboxMetrics.oldestPendingAt ? `${outboxMetrics.oldestPendingAgeSeconds} seconds` : 'none' %> · Worker last seen: <%= outboxMetrics.workerLastSeenAt ? `${outboxMetrics.workerName} at ${new Date(outboxMetrics.workerLastSeenAt).toLocaleString()}` : 'not yet observed' %></p>
+        <p class="hint">Oldest pending event: <%= outboxMetrics.oldestPendingAt ? `${outboxMetrics.oldestPendingAgeSeconds} seconds` : 'none' %> · Worker last seen: <%= outboxMetrics.workerLastSeenAt ? `${outboxMetrics.workerName} at ${formatDateTime(outboxMetrics.workerLastSeenAt)}` : 'not yet observed' %></p>
         <p class="notice">Manual redrive is limited to three times per event and preserves prior attempt counts. Delivery is at least once: a provider may repeat a side effect if it succeeded before a worker crash.</p>
         <% if (!outbox.length) { %><div class="empty-state"><span>No notification events recorded.</span></div><% } else { %>
           <div class="table-wrap">
@@ -163,11 +164,11 @@
         <% } %>
         <h3 class="subheading">Recent delivery and failure activity</h3>
         <% if (!notificationActivity.length) { %><p class="muted">No completed delivery or failure activity yet.</p><% } else { %>
-          <ul class="activity-list"><% notificationActivity.forEach((event) => { %><li><strong><%= event.eventType %></strong> · <%= event.status %> · <%= event.attempts %> attempts · <%= new Date(event.deliveredAt || event.failedAt || event.createdAt).toLocaleString() %></li><% }) %></ul>
+          <ul class="activity-list"><% notificationActivity.forEach((event) => { %><li><strong><%= event.eventType %></strong> · <%= event.status %> · <%= event.attempts %> attempts · <%= formatDateTime(event.deliveredAt || event.failedAt || event.createdAt) %></li><% }) %></ul>
         <% } %>
       </section>
     <% } %>
   </main>
-  <footer class="site-footer"><div class="site-footer-inner"><p>Signed in as <%= currentUser.name %> · <%= currentUser.role %></p><p>Local engineering showcase · Not a live campus service</p></div></footer>
+  <footer class="site-footer"><div class="site-footer-inner"><p>Signed in as <%= currentUser.name %> · <%= currentUser.role %></p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore. Use fictional information only.</p></div></footer>
 </body>
 </html>

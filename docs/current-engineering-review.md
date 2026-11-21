@@ -1,5 +1,7 @@
 # Current engineering review
 
+> **Superseded in part (2026-11-21):** see [`industry-readiness-audit.md`](industry-readiness-audit.md) for the latest findings. Since this review: time-zone-correct scheduling, no-overlap slots, login throttling, hashed session tokens, protected metrics, identifier-only outbox payloads and automatic purging were added.
+
 **Reviewed:** 2026-11-09
 
 **Code state:** `feature/final-project-completion` based on `feature/browser-regression`; account lifecycle, notification operations, verified SQLite backup/restore, and cross-browser verification are implemented on this branch.

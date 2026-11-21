@@ -1,6 +1,7 @@
 const pino = require('pino');
 const os = require('node:os');
 const { openDatabase } = require('../db');
+const { loadConfig } = require('../config');
 const { createAppointmentService } = require('../services/appointment-service');
 const { createConsoleNotificationAdapter } = require('../notifications/console-adapter');
 const { createNotificationWorker } = require('./notification-worker');
@@ -14,20 +15,23 @@ function positiveIntegerFromEnv(name, fallback) {
 }
 
 function main() {
+  const config = loadConfig();
+  const maxAttempts = positiveIntegerFromEnv('NOTIFICATION_MAX_ATTEMPTS', 5);
+  if (maxAttempts > 10) throw new Error('NOTIFICATION_MAX_ATTEMPTS must be between 1 and 10');
   const processOptions = {
     workerName: `notifications-${os.hostname()}-${process.pid}`.slice(0, 80),
     leaseMs: positiveIntegerFromEnv('NOTIFICATION_LEASE_MS', 30_000),
-    maxAttempts: positiveIntegerFromEnv('NOTIFICATION_MAX_ATTEMPTS', 5),
+    maxAttempts,
     baseDelayMs: positiveIntegerFromEnv('NOTIFICATION_RETRY_BASE_MS', 1_000),
     maxDelayMs: positiveIntegerFromEnv('NOTIFICATION_RETRY_MAX_MS', 60_000),
   };
   if (processOptions.maxDelayMs < processOptions.baseDelayMs) {
     throw new Error('NOTIFICATION_RETRY_MAX_MS must be >= NOTIFICATION_RETRY_BASE_MS');
   }
-  const dbPath = process.env.HEALTH_DB_PATH || './data/health-centre.sqlite';
+  const dbPath = config.dbPath;
   const db = openDatabase(dbPath);
   const appointments = createAppointmentService(db);
-  const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+  const logger = pino({ level: config.logLevel, redact: { paths: ['req.headers.authorization', 'req.headers.cookie', 'req.headers.x-csrf-token', 'password', 'token', 'resetUrl'], censor: '[REDACTED]' } });
   const adapter = createConsoleNotificationAdapter({
     write: (line) => logger.info({ component: 'notification-adapter' }, line),
   });

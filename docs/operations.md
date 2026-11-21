@@ -1,4 +1,6 @@
-# Local operations runbook
+# Operations runbook
+
+Local development commands below are separate from the Compose deployment. The public deployment is a synthetic demonstration only; see [production deployment](deployment-architecture.md), [configuration](production-configuration.md), [backup and restore](backup-and-restore-production.md), and [operations runbook](operations-runbook.md). Do not use real patient or clinical information.
 
 ## Start
 
@@ -12,7 +14,7 @@ The default database is `data/health-centre.sqlite`. The database directory is i
 
 The checked-in seed accounts are for local development only. Demo seeding is rejected in production, and production startup requires secure cookies. Active administrators can provision patient/doctor accounts and separately confirm administrator creation. Disabling an account revokes its sessions and prevents session hydration or new authentication; the last active administrator cannot be disabled. All lifecycle changes are transactional and audited.
 
-Password recovery responses do not disclose account existence. Reset tokens are stored only as SHA-256 hashes, expire after 30 minutes, are single-use, invalidate older outstanding tokens, and revoke active sessions. The default adapter logs only that local delivery is unconfigured; it never includes the reset URL or token. No real email is sent. The application rejects custom recovery adapters in production until provider delivery is reviewed. Configure `PUBLIC_BASE_URL` as the HTTPS origin before enabling an approved provider.
+Password recovery responses do not disclose account existence or wait for provider latency. Reset tokens are stored only as SHA-256 hashes, expire after 30 minutes, are single-use, invalidate older outstanding tokens, and revoke active sessions. Without provider settings, the reset page says no email was sent; the local adapter never includes the reset URL or token in logs. Optional Resend delivery is limited to reset links and uses a bounded retry policy. Configure `PUBLIC_BASE_URL` as the HTTPS origin and verify the sender domain before enabling email. Appointment events remain on the console adapter and do not send health details.
 
 ## Health checks
 
@@ -28,7 +30,7 @@ Run notifications as a separate process against the same SQLite file:
 npm run worker:notifications
 ```
 
-The default adapter writes a local console summary; it does not send email. A real provider can be injected through the notification adapter boundary when one is configured. Keep the worker supervised and point it at the same `HEALTH_DB_PATH` as the web process.
+The default appointment adapter writes a local console summary; it does not send email. Keep the worker supervised and point it at the same `HEALTH_DB_PATH` as the web process. The production Compose setup starts a separate worker after the web service is healthy, shares a persistent SQLite volume, and exposes only Caddy on ports 80/443.
 
 ## Browser regression suite
 

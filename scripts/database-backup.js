@@ -3,8 +3,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const Database = require('better-sqlite3');
 const { loadConfig } = require('../src/config');
+const { CURRENT_SCHEMA_VERSION, MINIMUM_RESTORABLE_SCHEMA_VERSION } = require('../src/db');
 
-const REQUIRED_SCHEMA_VERSION = 4;
+const REQUIRED_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
 
 function validateDatabase(filePath) {
   const db = new Database(filePath, { readonly: true, fileMustExist: true });
@@ -14,7 +15,9 @@ function validateDatabase(filePath) {
       throw new Error('SQLite integrity check failed');
     }
     const version = db.pragma('user_version', { simple: true });
-    if (version !== REQUIRED_SCHEMA_VERSION) throw new Error(`Unsupported database schema version ${version}; expected ${REQUIRED_SCHEMA_VERSION}`);
+    if (!Number.isInteger(version) || version < MINIMUM_RESTORABLE_SCHEMA_VERSION || version > CURRENT_SCHEMA_VERSION) {
+      throw new Error(`Unsupported database schema version ${version}; expected ${MINIMUM_RESTORABLE_SCHEMA_VERSION}-${CURRENT_SCHEMA_VERSION}`);
+    }
     const expected = ['users', 'appointments', 'outbox_events', 'password_reset_tokens', 'notification_worker_heartbeats', 'google_oauth_transactions'];
     const tables = new Set(db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all().map((row) => row.name));
     const missing = expected.filter((name) => !tables.has(name));

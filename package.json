@@ -18,16 +18,18 @@
     "worker:notifications": "node src/workers/run-notification-worker.js",
     "db:backup": "node scripts/database-backup.js",
     "db:restore": "node scripts/database-restore.js",
+    "admin:create": "node scripts/bootstrap-admin.js",
+    "backup:daily": "bash scripts/daily-backup.sh",
     "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:headed": "node scripts/run-e2e.js --headed",
     "test:e2e:report": "playwright show-report"
   },
   "engines": {
-    "node": ">=18.12"
+    "node": ">=24"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^9.6.0",
+    "better-sqlite3": "^13.2.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.6.1",
     "ejs": "^3.1.10",
@@ -40,13 +42,10 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.10.2",
-    "@playwright/test": "^1.51.1",
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.65.1",
     "eslint": "^8.57.1",
     "supertest": "^7.3.1"
-  },
-  "overrides": {
-    "playwright-core": "1.51.1"
   },
   "keywords": [
     "appointments",

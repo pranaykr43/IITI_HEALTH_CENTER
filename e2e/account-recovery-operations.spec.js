@@ -13,7 +13,7 @@ test('admin provisions a patient who completes password recovery', async ({ page
   const patientContext = await browser.newContext({ baseURL });
   const patientPage = await patientContext.newPage();
   await patientPage.goto('/password/forgot');
-  await patientPage.getByLabel('Email').fill(email);
+  await patientPage.getByLabel('Email address').fill(email);
   await patientPage.getByRole('button', { name: 'Send reset link' }).click();
   await expect(patientPage.getByRole('status')).toContainText('If an active account matches');
   const response = await patientPage.request.get(`${baseURL}/__e2e/password-reset-link?email=${encodeURIComponent(email)}`);
@@ -25,8 +25,9 @@ test('admin provisions a patient who completes password recovery', async ({ page
   await patientPage.goto(`/password/reset?token=${encodeURIComponent(token)}`);
   await patientPage.getByLabel('New password', { exact: true }).fill('Recovered-Strong-Password-88!');
   await patientPage.getByLabel('Confirm new password').fill('Recovered-Strong-Password-88!');
-  await patientPage.getByRole('button', { name: 'Change password' }).click();
-  await expect(patientPage).toHaveURL(/\/login\?message=/);
+  await patientPage.getByRole('button', { name: 'Save new password' }).click();
+  await expect(patientPage).toHaveURL(/\/login$/);
+  await expect(patientPage.getByRole('status')).toContainText('Password changed. Sign in again.');
   await patientPage.goto('/login/patient');
   await patientPage.getByLabel('Email address').fill(email);
   await patientPage.getByLabel('Password', { exact: true }).fill('Recovered-Strong-Password-88!');

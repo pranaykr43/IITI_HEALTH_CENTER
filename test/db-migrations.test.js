@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const Database = require('better-sqlite3');
-const { openDatabase } = require('../src/db');
+const { openDatabase, CURRENT_SCHEMA_VERSION } = require('../src/db');
 const { createAppointmentService } = require('../src/services/appointment-service');
 
 const cleanups = [];
@@ -51,7 +51,7 @@ test('outbox reliability migration preserves old events and gives stale processi
   assert.ok(columns.includes('lease_expires_at'));
   assert.ok(columns.includes('last_error'));
   assert.ok(columns.includes('failed_at'));
-  assert.equal(db.pragma('user_version', { simple: true }), 4);
+  assert.equal(db.pragma('user_version', { simple: true }), CURRENT_SCHEMA_VERSION);
   assert.ok(db.pragma('table_info(users)').some((column) => column.name === 'account_status'));
   assert.ok(db.pragma('table_info(outbox_events)').some((column) => column.name === 'redrive_count'));
   assert.equal(db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'notification_worker_heartbeats'").get().count, 1);
@@ -76,7 +76,7 @@ test('outbox reliability migration preserves old events and gives stale processi
 
   db.close();
   const reopened = openDatabase(dbPath);
-  assert.equal(reopened.pragma('user_version', { simple: true }), 4);
+  assert.equal(reopened.pragma('user_version', { simple: true }), CURRENT_SCHEMA_VERSION);
   assert.equal(reopened.prepare('SELECT COUNT(*) AS count FROM outbox_events').get().count, 3);
   reopened.close();
 });

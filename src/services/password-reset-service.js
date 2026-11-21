@@ -40,11 +40,11 @@ function createPasswordResetService({
 
       const resetUrl = new URL('/password/reset', baseUrl);
       resetUrl.searchParams.set('token', rawToken);
-      try {
-        await adapter.deliver({ email: user.email, resetUrl: resetUrl.toString(), expiresAt });
-      } catch {
-        reportDeliveryFailure();
-      }
+      // Never let provider latency reveal whether an account exists. The reset token is
+      // already persisted by hash; delivery is best-effort and may be requested again.
+      Promise.resolve()
+        .then(() => adapter.deliver({ email: user.email, resetUrl: resetUrl.toString(), expiresAt }))
+        .catch(() => reportDeliveryFailure());
     }
     // Keep unknown and active-account requests close in timing, even with a fast local adapter.
     const delayMs = 100 - (Date.now() - startedAt);

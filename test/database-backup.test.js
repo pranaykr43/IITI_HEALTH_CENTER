@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { openDatabase } = require('../src/db');
+const { openDatabase, CURRENT_SCHEMA_VERSION } = require('../src/db');
 const { writeBackup, validateDatabase } = require('../scripts/database-backup');
 const { restoreDatabase, requireStoppedDeclaration } = require('../scripts/database-restore');
 
@@ -24,8 +24,8 @@ test('verified backup is non-overwriting and staged restore preserves a safety c
   db.close();
 
   const result = await writeBackup(source, backup);
-  assert.equal(result.schemaVersion, 4);
-  assert.equal(validateDatabase(backup).schemaVersion, 4);
+  assert.equal(result.schemaVersion, CURRENT_SCHEMA_VERSION);
+  assert.equal(validateDatabase(backup).schemaVersion, CURRENT_SCHEMA_VERSION);
   await assert.rejects(writeBackup(source, backup), /already exists|EEXIST/i);
 
   const live = openDatabase(target);
