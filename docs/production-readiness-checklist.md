@@ -11,13 +11,15 @@ Legend: ✅ verified on this branch · ⚠️ implemented but not verified end-t
 | | Item | Evidence / how to verify |
 |---|---|---|
 | 🔑 | Revoke the leaked Gmail app password (audit P0-1) | Owner confirms in Google account security settings |
-| ✅ | Dependencies install and tests pass on Node 24 | `npm ci && npm run check` (71 tests, lint clean) |
+| ✅ | Dependencies install and tests pass on Node 24 | `npm ci && npm run check` (81 tests, lint clean) |
 | ✅ | No known vulnerable dependencies | `npm audit` → 0 vulnerabilities |
-| ✅ | Browser suites pass | `npm run test:e2e` — 36/36 across Chromium, Firefox and WebKit |
+| ✅ | Browser suites pass | `npm run test:e2e` — 39/39 across Chromium, Firefox and WebKit |
 | ⚠️ | CI green on the merged commit (Node 24/26, three-browser e2e, ARM64 container smoke) | Check the GitHub Actions run for the merge commit |
 | ⚠️ | Container image builds and starts | Docker not available on the audit machine; covered by CI `arm64-container` |
 | 🔑 | DNS, TLS via Caddy, firewall exposing only 80/443 | `curl -I https://<host>/healthz`; port 3000 not reachable externally |
 | 🔑 | `.env` owner-only with `NODE_ENV=production`, `DEMO_MODE=true`, `COOKIE_SECURE=true`, `TRUST_PROXY_HOPS=1`, HTTPS `PUBLIC_BASE_URL`, absolute `HEALTH_DB_PATH`, `CLINIC_TIMEZONE` | Startup refuses unsafe values (`test/config.test.js`) |
+| 🔑 | `MFA_ENCRYPTION_KEY` set (32 random bytes) and backed up separately from database backups | Startup refuses production without it (`test/mfa.test.js`) |
+| 🔑 | First administrator enrols in two-factor authentication immediately after `npm run admin:create` | Dashboard accounts table shows 2FA "On" |
 | 🔑 | `METRICS_TOKEN` set (≥ 32 random characters) if metrics are scraped; otherwise `/metrics` returns 404 | `curl -H "Authorization: Bearer …" https://<host>/metrics` |
 | 🔑 | Initial administrator created with `npm run admin:create` (interactive, production only) | Audit row `admin.bootstrap` |
 | ✅ | Demo seeding disabled in production | `test/config.test.js` |
@@ -47,7 +49,7 @@ Scrape `/metrics` with the bearer token every 30–60 seconds.
 |---|---|
 | ❌ | Legal and compliance assessment for the jurisdiction (for example India's DPDP Act 2023; HIPAA if US entities are involved), data-processing agreements with any provider |
 | ❌ | Consent capture, privacy notice, data-subject access/correction/erasure workflows, documented retention schedule for clinical records |
-| ❌ | MFA for all staff accounts (roadmap Phase 1) |
+| ✅ | TOTP MFA required for staff accounts (`STAFF_MFA_REQUIRED=true`, production default); phishing-resistant WebAuthn still ❌ |
 | ❌ | Encryption at rest for the database volume and backups, with key management |
 | ❌ | Independent penetration test and remediation |
 | ❌ | Incident response and breach-notification runbook with named contacts |

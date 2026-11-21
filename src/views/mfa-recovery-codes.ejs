@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · Health Centre</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header class="site-header"><div class="site-header-inner"><a class="brand" href="/dashboard">Health Centre</a></div></header>
+  <main class="content-shell security-shell">
+    <div class="form-success" role="status"><%= heading %>.</div>
+    <div class="page-heading"><p class="section-index">Account security</p><h1>Save your recovery codes</h1>
+      <p>Each code signs you in once if you lose access to your authenticator app. Store them somewhere safe, such as a password manager. They will not be shown again.</p>
+    </div>
+    <section class="panel" aria-labelledby="codes-title">
+      <h2 id="codes-title" class="sr-only">Recovery codes</h2>
+      <ul class="recovery-codes" aria-label="Recovery codes">
+        <% recoveryCodes.forEach((code) => { %><li><code><%= code %></code></li><% }) %>
+      </ul>
+      <p class="hint">Generating new codes later replaces all of these.</p>
+      <a class="button primary" href="/dashboard">I have saved my codes</a>
+    </section>
+  </main>
+  <footer class="site-footer"><div class="site-footer-inner"><p>Health Centre</p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore.</p></div></footer>
+</body>
+</html>

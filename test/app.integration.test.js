@@ -36,7 +36,7 @@ test('health and readiness endpoints expose a usable service', async () => {
 });
 
 test('production security headers retain HTTPS enforcement', async () => {
-  const system = createApp({ config: { dbPath: ':memory:', nodeEnv: 'production', demoMode: true, cookieSecure: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', logLevel: 'silent' } });
+  const system = createApp({ config: { dbPath: ':memory:', nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', demoMode: true, cookieSecure: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', logLevel: 'silent' } });
   try {
     const health = await request(system.app).get('/healthz');
     assert.equal(health.status, 200);

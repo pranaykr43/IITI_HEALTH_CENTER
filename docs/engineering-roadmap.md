@@ -23,7 +23,7 @@ Guiding constraints: keep the server-rendered Express + EJS + SQLite architectur
 
 ### Phase 1 — Security (next)
 
-1. **Staff MFA (TOTP).** Enrolment with recovery codes, required for doctors and administrators, audited. *Verify:* integration tests for enrolment, login with/without code, recovery-code single use; e2e sign-in.
+1. ~~**Staff MFA (TOTP).**~~ Done 2026-11-21: enrolment with recovery codes, required for staff in production, admin reset, audited; verified by `test/mfa.test.js` and `e2e/mfa.spec.js`. Follow-up: WebAuthn/passkeys for phishing resistance.
 2. **Off-main-thread password hashing.** A small `worker_threads` pool running bcrypt, or argon2id via a maintained native module with rehash on successful login. *Verify:* event-loop delay histogram under 20 concurrent logins stays below 20 ms.
 3. **Breached-password screening** at registration, reset and admin provisioning. *Verify:* unit test with a fixture list; no plaintext leaves the process.
 4. **Delete the legacy `routes/` and `views/` tree** and the Express-generator `bin/www` shim. *Verify:* the app still boots and all tests pass.

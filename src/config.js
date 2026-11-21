@@ -1,12 +1,13 @@
 const path = require('node:path');
+const crypto = require('node:crypto');
 require('dotenv').config();
 
-function parseBoolean(value, fallback) {
+function parseBoolean(value, fallback, name = 'COOKIE_SECURE') {
   if (value === undefined) return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
   if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
-  throw new Error('COOKIE_SECURE must be a boolean value');
+  throw new Error(`${name} must be a boolean value`);
 }
 
 function loadConfig(overrides = {}) {
@@ -32,7 +33,22 @@ function loadConfig(overrides = {}) {
     clinicTimeZone: overrides.clinicTimeZone ?? env.CLINIC_TIMEZONE ?? 'Asia/Kolkata',
     slotMinutes: Number(overrides.slotMinutes ?? env.APPOINTMENT_SLOT_MINUTES ?? 15),
     metricsToken: overrides.metricsToken ?? env.METRICS_TOKEN ?? null,
+    mfaEncryptionKey: overrides.mfaEncryptionKey ?? env.MFA_ENCRYPTION_KEY ?? null,
+    staffMfaRequired: overrides.staffMfaRequired ?? parseBoolean(env.STAFF_MFA_REQUIRED, nodeEnv === 'production', 'STAFF_MFA_REQUIRED'),
   };
+  if (config.mfaEncryptionKey === '') config.mfaEncryptionKey = null;
+  if (!config.mfaEncryptionKey) {
+    if (nodeEnv === 'production') throw new Error('MFA_ENCRYPTION_KEY must be set in production (32 random bytes, base64 or hex)');
+    // Development and test only: a fixed, publicly known key so local databases keep working
+    // across restarts. It never protects real secrets.
+    config.mfaEncryptionKey = crypto.createHash('sha256').update('health-centre-insecure-development-mfa-key').digest('base64');
+    config.mfaEncryptionKeyIsDevelopmentDefault = true;
+  }
+  {
+    const text = String(config.mfaEncryptionKey).trim();
+    const bytes = /^[0-9a-f]{64}$/i.test(text) ? Buffer.from(text, 'hex') : Buffer.from(text, 'base64');
+    if (bytes.length !== 32) throw new Error('MFA_ENCRYPTION_KEY must decode to exactly 32 bytes (base64 or 64 hex characters)');
+  }
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: config.clinicTimeZone });
   } catch {

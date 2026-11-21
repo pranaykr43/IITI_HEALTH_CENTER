@@ -24,6 +24,7 @@ function createHousekeepingService(db, {
         WHERE (used_at IS NOT NULL AND used_at <= ?) OR expires_at <= ?
       `).run(tokenCutoff, tokenCutoff).changes,
       oauthTransactions: db.prepare('DELETE FROM google_oauth_transactions WHERE expires_at <= ?').run(nowIso).changes,
+      mfaPendingLogins: db.prepare('DELETE FROM mfa_pending_logins WHERE expires_at <= ?').run(nowIso).changes,
       idempotencyKeys: db.prepare('DELETE FROM idempotency_keys WHERE created_at <= ?')
         .run(new Date(nowMs - idempotencyRetentionMs).toISOString()).changes,
       deliveredEvents: db.prepare("DELETE FROM outbox_events WHERE status = 'delivered' AND delivered_at <= ?")

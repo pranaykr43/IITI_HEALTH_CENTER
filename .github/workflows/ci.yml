@@ -55,6 +55,7 @@ jobs:
           docker run -d --name health-centre-ci --platform linux/arm64 \
             -e PUBLIC_BASE_URL=https://demo.example.test \
             -e TRUST_PROXY_HOPS=1 -e DEMO_MODE=true \
+            -e MFA_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
             health-centre:ci
           for i in $(seq 1 30); do
             if docker exec health-centre-ci node -e "fetch('http://127.0.0.1:3000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then exit 0; fi

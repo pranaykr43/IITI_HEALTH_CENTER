@@ -12,17 +12,17 @@ test('configuration rejects unsafe port and session values', () => {
 });
 
 test('production requires secure cookies and has no demo password fallback', () => {
-  const config = loadConfig({ nodeEnv: 'production', dbPath: '/var/lib/health/data/health-centre.sqlite', demoMode: true, publicBaseUrl: 'https://health.example', trustProxyHops: 1 });
+  const config = loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath: '/var/lib/health/data/health-centre.sqlite', demoMode: true, publicBaseUrl: 'https://health.example', trustProxyHops: 1 });
   assert.equal(config.cookieSecure, true);
   assert.equal(config.demoPassword, undefined);
   const dbPath = '/var/lib/health/data/health-centre.sqlite';
-  assert.throws(() => loadConfig({ nodeEnv: 'production', dbPath, demoMode: true, cookieSecure: false, trustProxyHops: 1, publicBaseUrl: 'https://health.example' }), /COOKIE_SECURE must be true/);
-  assert.throws(() => loadConfig({ nodeEnv: 'production', dbPath, demoMode: true, trustProxyHops: 0, publicBaseUrl: 'https://health.example' }), /TRUST_PROXY_HOPS/);
-  assert.throws(() => loadConfig({ nodeEnv: 'production', dbPath, demoMode: true, trustProxyHops: 1 }), /PUBLIC_BASE_URL/);
-  assert.throws(() => loadConfig({ nodeEnv: 'production', dbPath, demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', resendApiKey: 'key' }), /configured together/);
-  assert.throws(() => loadConfig({ nodeEnv: 'production', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example' }), /HEALTH_DB_PATH/);
-  assert.throws(() => loadConfig({ nodeEnv: 'production', dbPath: 'relative.sqlite', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example' }), /HEALTH_DB_PATH/);
-  assert.equal(loadConfig({ nodeEnv: 'production', dbPath, demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', resendApiKey: 'key', emailFrom: 'demo@health.example' }).emailEnabled, true);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath, demoMode: true, cookieSecure: false, trustProxyHops: 1, publicBaseUrl: 'https://health.example' }), /COOKIE_SECURE must be true/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath, demoMode: true, trustProxyHops: 0, publicBaseUrl: 'https://health.example' }), /TRUST_PROXY_HOPS/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath, demoMode: true, trustProxyHops: 1 }), /PUBLIC_BASE_URL/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath, demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', resendApiKey: 'key' }), /configured together/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example' }), /HEALTH_DB_PATH/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath: 'relative.sqlite', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example' }), /HEALTH_DB_PATH/);
+  assert.equal(loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath, demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', resendApiKey: 'key', emailFrom: 'demo@health.example' }).emailEnabled, true);
 });
 
 test('cookie secure environment parsing rejects unknown values', () => {
@@ -41,7 +41,7 @@ test('Google OAuth is optional but validates complete configuration and secure c
   assert.equal(withoutGoogle.googleClientId, null);
   assert.equal(withoutGoogle.googleCallbackUrl, null);
   assert.throws(() => loadConfig({ googleClientId: 'client-only' }), /must be configured together/);
-  assert.throws(() => loadConfig({ nodeEnv: 'production', dbPath: '/var/lib/health/data/health-centre.sqlite', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', googleClientId: 'client', googleClientSecret: 'secret', googleCallbackUrl: 'http://health.example/auth/google/callback' }), /must use HTTPS/);
+  assert.throws(() => loadConfig({ nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', dbPath: '/var/lib/health/data/health-centre.sqlite', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', googleClientId: 'client', googleClientSecret: 'secret', googleCallbackUrl: 'http://health.example/auth/google/callback' }), /must use HTTPS/);
   const configured = loadConfig({ nodeEnv: 'test', port: 3200, googleClientId: 'client', googleClientSecret: 'secret' });
   assert.equal(configured.googleCallbackUrl, 'http://localhost:3200/auth/google/callback');
 });
@@ -71,6 +71,6 @@ test('.env values are loaded before application configuration is read', () => {
 
 test('demo seeding is unavailable in production and refuses weak passwords', () => {
   const { seedDemoData } = require('../src/seed');
-  assert.throws(() => seedDemoData({ config: { nodeEnv: 'production', demoPassword: undefined } }), /disabled in production/);
+  assert.throws(() => seedDemoData({ config: { nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', demoPassword: undefined } }), /disabled in production/);
   assert.throws(() => seedDemoData({ config: { nodeEnv: 'development', demoPassword: 'short' } }), /at least 12 characters/);
 });

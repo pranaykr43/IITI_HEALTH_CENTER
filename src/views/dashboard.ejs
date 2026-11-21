@@ -11,6 +11,7 @@
     <a class="brand" href="/">Health Centre</a>
     <div class="header-actions">
       <span class="user-chip"><%= currentUser.name %> · <%= currentUser.role %></span>
+      <a class="text-link" href="/account/security">Security<% if (!currentUser.mfaEnabled) { %><span class="sr-only"> (two-factor authentication off)</span><% } %></a>
       <form method="post" action="/auth/logout">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <button class="link-button" type="submit">Sign out</button>
@@ -113,13 +114,15 @@
         <div class="table-wrap account-table-wrap">
           <table class="data-table">
             <caption class="sr-only">Accounts and current status</caption>
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Created</th><th>Action</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>2FA</th><th>Created</th><th>Action</th></tr></thead>
             <tbody><% accounts.forEach((account) => { %><tr>
               <td><%= account.name %></td><td><%= account.email %></td><td><%= account.role %></td>
               <td><span class="status-badge status-<%= account.status %>"><%= account.status %></span></td>
+              <td><%= account.mfaEnabled ? 'On' : 'Off' %></td>
               <td><%= formatDateTime(account.createdAt) %></td>
               <td><% if (account.status === 'active') { %>
-                <form method="post" action="/admin/accounts/<%= account.id %>/disable"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button danger" type="submit">Disable</button></form>
+                <div class="action-row"><form method="post" action="/admin/accounts/<%= account.id %>/disable"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button danger" type="submit">Disable</button></form>
+                <% if (account.mfaEnabled && account.id !== currentUser.id) { %><form method="post" action="/admin/accounts/<%= account.id %>/reset-mfa"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button secondary" type="submit">Reset 2FA<span class="sr-only"> for <%= account.name %></span></button></form><% } %></div>
               <% } else { %>
                 <form method="post" action="/admin/accounts/<%= account.id %>/reactivate"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small-button secondary" type="submit">Reactivate</button></form>
               <% } %></td>

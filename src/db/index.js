@@ -8,7 +8,8 @@ const ACCOUNT_LIFECYCLE_MIGRATION = 2;
 const NOTIFICATION_OPERATIONS_MIGRATION = 3;
 const GOOGLE_AUTH_MIGRATION = 4;
 const HASHED_SESSIONS_MIGRATION = 5;
-const CURRENT_SCHEMA_VERSION = HASHED_SESSIONS_MIGRATION;
+const MFA_MIGRATION = 6;
+const CURRENT_SCHEMA_VERSION = MFA_MIGRATION;
 // Backups at or above this version can be restored; opening them applies newer migrations.
 const MINIMUM_RESTORABLE_SCHEMA_VERSION = GOOGLE_AUTH_MIGRATION;
 
@@ -189,6 +190,41 @@ function migrateHashedSessions(db) {
   }).immediate();
 }
 
+// Version 6 adds TOTP two-factor authentication: an encrypted seed per user, hashed
+// single-use recovery codes, and short-lived pending sign-ins awaiting a second factor.
+function migrateMfa(db) {
+  const version = db.pragma('user_version', { simple: true });
+  if (version >= MFA_MIGRATION) return;
+  db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_mfa (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        secret_ciphertext TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        enabled_at TEXT,
+        last_used_step INTEGER NOT NULL DEFAULT 0 CHECK (last_used_step >= 0)
+      );
+      CREATE TABLE IF NOT EXISTS mfa_recovery_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        used_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_mfa_recovery_user ON mfa_recovery_codes(user_id);
+      CREATE TABLE IF NOT EXISTS mfa_pending_logins (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_mfa_pending_expiry ON mfa_pending_logins(expires_at);
+    `);
+    db.pragma(`user_version = ${MFA_MIGRATION}`);
+  }).immediate();
+}
+
 function openDatabase(dbPath) {
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -208,6 +244,7 @@ function openDatabase(dbPath) {
   migrateNotificationOperations(db);
   migrateGoogleAuthentication(db);
   migrateHashedSessions(db);
+  migrateMfa(db);
   return db;
 }
 
@@ -225,4 +262,5 @@ module.exports = {
   migrateNotificationOperations,
   migrateGoogleAuthentication,
   migrateHashedSessions,
+  migrateMfa,
 };

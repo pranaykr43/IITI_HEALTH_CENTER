@@ -15,6 +15,7 @@ const { createAccountService } = require('../services/account-service');
 const { createPasswordResetService } = require('../services/password-reset-service');
 const { createGoogleOAuthService } = require('../services/google-oauth-service');
 const { createHousekeepingService } = require('../services/housekeeping-service');
+const { createMfaService } = require('../services/mfa-service');
 const { formatClinicDateTime } = require('../domain/clinic-time');
 const { createUnconfiguredPasswordResetAdapter, createResendPasswordResetAdapter } = require('../notifications/password-reset-adapter');
 const { createRouter, wantsJson, safeEqual } = require('./routes');
@@ -37,6 +38,10 @@ function createApp(options = {}) {
   });
   const appointments = createAppointmentService(db, { clinicTimeZone: config.clinicTimeZone, slotMinutes: config.slotMinutes });
   const housekeeping = createHousekeepingService(db);
+  const mfa = createMfaService({ db, config, now: options.now });
+  if (config.mfaEncryptionKeyIsDevelopmentDefault && config.nodeEnv === 'development') {
+    logger.warn({ component: 'mfa' }, 'MFA_ENCRYPTION_KEY is not set; using the insecure development key');
+  }
   const metrics = { requests: 0, errors: 0, appointmentsCreated: 0, startedAt: new Date().toISOString() };
   const app = express();
 
@@ -164,7 +169,7 @@ function createApp(options = {}) {
     }
   }
 
-  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config: routesConfig, options }));
+  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, mfa, metrics, config: routesConfig, options }));
 
   app.use((req, res) => {
     const error = new AppError('Route not found', 404, 'not_found');
@@ -187,7 +192,7 @@ function createApp(options = {}) {
     return res.status(statusCode).render('error', { title: 'Request failed', error: payload });
   });
 
-  return { app, db, auth, accounts, passwordResets, googleOAuth, appointments, housekeeping, config, metrics, logger, close: () => db.close() };
+  return { app, db, auth, accounts, passwordResets, googleOAuth, appointments, housekeeping, mfa, config, metrics, logger, close: () => db.close() };
 }
 
 module.exports = { createApp };

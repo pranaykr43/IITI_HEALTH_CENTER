@@ -191,6 +191,14 @@ The importer never reads the legacy login files or migrates passwords/accounts. 
 - `GET /readyz` — database readiness.
 - `GET /metrics` — Prometheus-format HTTP, appointment, outbox and worker-heartbeat metrics. In production it returns 404 unless `METRICS_TOKEN` (32+ characters) is set, and then requires `Authorization: Bearer <token>`.
 
+## Two-factor authentication
+
+- Any user can turn on TOTP two-factor authentication from **Security** in the dashboard header, using any standard authenticator app (QR code or manual setup key). Enrolment is confirmed with a live code and issues ten single-use recovery codes (stored hashed), and signs out the user's other sessions.
+- With `STAFF_MFA_REQUIRED=true` (the production default) doctors and administrators are sent to enrolment before they can use the app, and cannot turn it off.
+- After a correct password (or Google sign-in) the browser gets a five-minute pending sign-in, not a session, and must enter a code at `/auth/mfa`. Five wrong codes end the pending sign-in. API clients send `otp` or `recoveryCode` with `POST /api/auth/login` and receive `401 mfa_required` without one.
+- Each code works once (a per-user replay barrier), one 30-second step of clock drift is tolerated, and secrets are encrypted with `MFA_ENCRYPTION_KEY` (AES-256-GCM, required in production).
+- Administrators can **Reset 2FA** for another user who lost their device; this revokes that user's sessions and is audited.
+
 ## Scheduling rules
 
 - Times typed into the scheduling form are clinic wall-clock times in `CLINIC_TIMEZONE` (default `Asia/Kolkata`) and are displayed back in that zone, regardless of the server's own time zone.

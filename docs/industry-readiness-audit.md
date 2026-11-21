@@ -24,13 +24,13 @@ All P1 items and most P2/P3 items were fixed on this branch, each with regressio
 | Check | Result |
 |---|---|
 | `npm ci` on Node 24.22.3 | Succeeds (before: failed compiling `better-sqlite3@9.6.0`) |
-| `npm test` (Node test runner) | 71/71 passing |
+| `npm test` (Node test runner) | 81/81 passing (71 at audit time + 10 for the MFA follow-up) |
 | `npm run lint` | 0 problems |
 | `npm audit` (all dependencies) | 0 vulnerabilities (before: 2 high, Playwright) |
 | `npm run demo` | Idempotent retry, 200 schedule, 409 collision, 3 events processed |
-| Playwright Chromium + Firefox + WebKit | 36/36 passing (final run, `npm run test:e2e`) |
+| Playwright Chromium + Firefox + WebKit | 39/39 passing (`npm run test:e2e`, including the MFA journey) |
 | Manual browser walkthrough | Patient request → admin schedule (10:30 IST stored as 05:00Z) → worker delivery, spoofed query messages ignored |
-| Docker image build / ARM64 smoke | **Not run locally** (Docker not installed on the audit machine); CI job defined |
+| Docker image build / ARM64 smoke | Not run locally (no Docker on the audit machine); **passed in CI** (`arm64-container` job, run 44921673663) |
 
 ## 2. Workspace integrity incident (found before the code audit)
 
@@ -81,7 +81,7 @@ Status: **Fixed** (implemented and verified on this branch) · **Partially fixed
 - **Evidence:** the only limit on `POST /auth/login*` was the global 120 requests/minute/IP limiter, which allows about 170,000 guesses per IP per day. There was no per-account limit.
 - **Impact:** online password guessing against patient, doctor and administrator accounts.
 - **Fix:** two limits apply to failed attempts only (successful sign-ins are not counted): 10 per 15 minutes per client IP + email, and 30 per 15 minutes per email across all clients. Rejections return 429 with guidance to wait or reset the password, and the role sign-in pages render this as an accessible error. Comparison also runs against a dummy hash for unknown emails, so response time does not reveal whether an account exists (P2-5).
-- **Residual:** counters are in memory per process and reset on restart. There is no permanent lockout and no MFA (see roadmap).
+- **Residual:** counters are in memory per process and reset on restart. There is no permanent lockout. TOTP two-factor authentication was added afterwards (see P2-13).
 - **Verification:** `failed sign-ins are throttled per client and email…` test.
 
 ### P1-4 Password hashing blocked the event loop — Partially fixed
@@ -163,7 +163,23 @@ Status: **Fixed** (implemented and verified on this branch) · **Partially fixed
 
 Rate-limit state is per process, and SQLite is a single local file. Running more than one web instance on separate hosts would not share limits or coordinate writes. This is documented in `docs/current-engineering-review.md`. PostgreSQL plus a shared rate-limit store is justified only if a multi-instance deployment is actually required.
 
-### P2-13 No multi-factor authentication or audit-log viewer — Open
+### P2-13 No multi-factor authentication or audit-log viewer — MFA fixed (2026-11-21 follow-up); audit viewer open
+
+TOTP two-factor authentication is implemented (`src/security/totp.js`, `src/security/secret-box.js`, `src/services/mfa-service.js`, schema v6):
+
+- RFC 6238 codes are verified against the RFC test vectors.
+- Seeds are encrypted with AES-256-GCM under `MFA_ENCRYPTION_KEY`, bound to the user ID.
+- A per-user replay barrier rejects any code that has already been used.
+- Ten single-use recovery codes are stored as SHA-256 digests.
+- After a correct password, the browser gets a five-minute pending sign-in with five attempts; the session is issued only after the second factor.
+- Google sign-in also requires the second factor.
+- With `STAFF_MFA_REQUIRED` on (production default), staff must enrol before using the app.
+- Administrators can reset another user's second factor, which revokes that user's sessions.
+- All changes are audited.
+
+Verified by `test/mfa.test.js` (9 tests), a Google-flow test, and `e2e/mfa.spec.js` in Chromium, Firefox and WebKit with axe checks on the new pages.
+
+**Still open:** the administrator audit-log viewer. Recovery is administrator-mediated; there is no self-service device change other than turning MFA off for non-staff users.
 
 Audit rows are written transactionally for every privileged action, but administrators can't see them in the UI. Staff accounts have no second factor.
 
@@ -200,7 +216,7 @@ The helper clicked "Sign out" and navigated away immediately, which could cancel
 | Architecture | Clear layering (routes → services → SQLite) with dependency injection for tests. Express + EJS + SQLite stays: none of the current problems call for React, microservices, Kubernetes or PostgreSQL. |
 | Express implementation | Helmet CSP/HSTS, body size limits, request IDs, structured logs with query strings stripped, central error handler. Route handlers are long but readable. |
 | Database | Foreign keys, CHECK constraints, WAL, `busy_timeout`, partial unique slot index, versioned optimistic concurrency, `IMMEDIATE` transactions, forward-only migrations (now v5, with indexes for sessions, schedules, audit and idempotency). |
-| Authentication | bcrypt cost 12, hashed session tokens, hashed single-use reset tokens, throttled failed logins, session revocation on disable/reset. Missing: MFA, off-main-thread hashing. |
+| Authentication | bcrypt cost 12, hashed session tokens, hashed single-use reset tokens, throttled failed logins, session revocation on disable/reset, TOTP MFA (required for staff in production). Missing: off-main-thread hashing. |
 | Google OAuth | PKCE, state bound to a browser cookie, nonce, issuer/audience/azp/expiry/email-verified checks, patient-only linking. Not exercised against a real Google project (no credentials). |
 | CSRF / XSS / SQLi | Per-session CSRF on all authenticated mutations and double-submit on anonymous forms. All EJS output escaped (no `<%-`). All SQL parameterised. Default CSP. |
 | Permissions | Role checks at route and service level; ownership checks for patient cancel and doctor completion. Covered by integration and e2e tests. |
@@ -217,7 +233,7 @@ The helper clicked "Sign out" and navigated away immediately, which could cancel
 
 ## 5. What this audit could not verify
 
-- Docker build and container runtime (Docker not available on the audit machine). The CI `arm64-container` job covers this once pushed.
-- GitHub Actions results for this branch at the time of writing. The GitHub CLI is not installed, and CI status should be checked on the pull request.
+- Docker build and runtime on the audit machine (no Docker installed). The image was built and smoke-tested by the CI `arm64-container` job for commit `1ef95c8`, which passed together with Node 24/26 and three-browser e2e.
+- Two-factor authentication with a real phone authenticator app. Codes were generated from the setup key with the project's RFC 6238 implementation, which is verified against the RFC test vectors.
 - Real Google OAuth, real email delivery through Resend, and any production hosting.
 - Revocation of the leaked SMTP credential (P0-1).

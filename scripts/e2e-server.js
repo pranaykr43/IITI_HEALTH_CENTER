@@ -56,6 +56,8 @@ try {
     getE2EPasswordResetLink: (email) => resetLinks.get(email),
     passwordResetRequestLimit: 20,
     passwordResetCompletionLimit: 30,
+    // All browser projects share one server and client IP; production keeps the default of 5/hour.
+    registrationLimit: 50,
     passwordResetAdapter: {
       configured: true,
       async deliver({ email, resetUrl }) { resetLinks.set(email.toLowerCase(), resetUrl); },

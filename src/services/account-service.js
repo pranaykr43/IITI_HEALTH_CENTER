@@ -115,8 +115,10 @@ function createAccountService({ db, auth, now = () => new Date() }) {
 
   function listAccounts() {
     return db.prepare(`
-      SELECT id, email, name, role, account_status AS status, created_at AS createdAt
-      FROM users ORDER BY created_at DESC, id DESC
+      SELECT users.id, users.email, users.name, users.role, users.account_status AS status, users.created_at AS createdAt,
+             CASE WHEN user_mfa.enabled_at IS NULL THEN 0 ELSE 1 END AS mfaEnabled
+      FROM users LEFT JOIN user_mfa ON user_mfa.user_id = users.id
+      ORDER BY users.created_at DESC, users.id DESC
     `).all();
   }
 

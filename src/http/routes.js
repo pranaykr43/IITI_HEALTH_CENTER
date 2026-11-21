@@ -2,6 +2,8 @@ const crypto = require('node:crypto');
 const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { z } = require('zod');
+const QRCode = require('qrcode');
+const { sessionDigest } = require('../services/auth-service');
 const {
   AppError,
   AuthenticationError,
@@ -12,7 +14,14 @@ const {
 const loginSchema = z.object({
   email: z.string().trim().email().max(320),
   password: z.string().min(1).max(200),
+  otp: z.string().trim().max(12).optional(),
+  recoveryCode: z.string().trim().max(40).optional(),
 });
+const mfaChallengeSchema = z.object({
+  code: z.string().trim().max(12).optional().default(''),
+  recoveryCode: z.string().trim().max(40).optional().default(''),
+}).refine((input) => input.code || input.recoveryCode, { message: 'Enter the code from your authenticator app or a recovery code' });
+const mfaCodeSchema = z.object({ code: z.string().trim().regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app') });
 
 const scheduleSchema = z.object({
   doctorId: z.coerce.number().int().positive(),
@@ -47,6 +56,9 @@ const resetCompletionSchema = z.object({
 }).refine((input) => input.password === input.confirmPassword, { path: ['confirmPassword'], message: 'Passwords do not match' });
 
 const FLASH_COOKIE = 'health_flash';
+const MFA_PENDING_COOKIE = 'health_mfa_pending';
+// Paths a staff member may use before enrolling in two-factor authentication.
+const MFA_ENROLLMENT_PATHS = new Set(['/', '/account/security', '/account/mfa/enable', '/auth/logout']);
 const FLASH_MAX_LENGTH = 500;
 
 function wantsJson(req) {
@@ -71,7 +83,7 @@ function emailKey(req) {
   return String(req.body?.email || '').trim().toLowerCase().slice(0, 320);
 }
 
-function createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, metrics, config, options = {} }) {
+function createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, mfa, metrics, config, options = {} }) {
   const router = express.Router();
   const limiterDefaults = { standardHeaders: 'draft-7', legacyHeaders: false };
   const passwordResetRequestLimiter = rateLimit({
@@ -111,6 +123,22 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     skipSuccessfulRequests: true,
     keyGenerator: (req) => `account|${emailKey(req)}`,
     handler: (req, res, next) => next(loginRateLimitError()),
+  });
+
+  const mfaChallengeLimiter = rateLimit({
+    ...limiterDefaults,
+    windowMs: 15 * 60_000,
+    limit: options.mfaChallengeLimit ?? 20,
+    skipSuccessfulRequests: true,
+    handler: (req, res, next) => next(new AppError('Too many two-factor attempts. Wait 15 minutes and sign in again.', 429, 'rate_limited')),
+  });
+  const mfaManagementLimiter = rateLimit({
+    ...limiterDefaults,
+    windowMs: 15 * 60_000,
+    limit: options.mfaManagementLimit ?? 10,
+    skipSuccessfulRequests: true,
+    keyGenerator: (req) => `mfa-manage|${req.session?.user?.id ?? req.ip}`,
+    handler: (req, res, next) => next(new AppError('Too many incorrect codes. Wait 15 minutes and try again.', 429, 'rate_limited')),
   });
 
   const setFlash = (res, kind, text) => {
@@ -185,6 +213,17 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     next();
   });
 
+  // Doctors and administrators must enrol in two-factor authentication before doing
+  // anything else when STAFF_MFA_REQUIRED is on (the production default).
+  router.use((req, res, next) => {
+    if (!req.session || req.session.user.mfaEnabled || !mfa.isRequiredFor(req.session.user)) return next();
+    if (MFA_ENROLLMENT_PATHS.has(req.path)) return next();
+    if (req.method === 'GET' && !wantsJson(req)) {
+      return redirectWithFlash(res, '/account/security', 'error', 'Set up two-factor authentication to continue. It is required for doctor and administrator accounts.');
+    }
+    return next(new AppError('Two-factor authentication must be set up before this account can be used', 403, 'mfa_enrollment_required'));
+  });
+
   router.get('/', (req, res) => res.render('home', { title: 'Health Centre' }));
 
   router.get('/login', (req, res) => {
@@ -207,6 +246,24 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
   const sessionCookieOptions = () => ({
     httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge: config.sessionTtlSeconds * 1000, path: '/',
   });
+  const mfaPendingCookieOptions = (maxAge) => ({ httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, maxAge, path: '/auth/mfa' });
+  const clearMfaPending = (res) => res.clearCookie(MFA_PENDING_COOKIE, mfaPendingCookieOptions(undefined));
+  // Password (or Google) verified for an account with two-factor enabled: issue a short-lived
+  // pending sign-in instead of a session and ask for the second factor.
+  const beginMfaChallenge = (req, res, userId) => {
+    if (req.session) auth.destroySession(req.session.id);
+    const pending = mfa.createPendingLogin(userId);
+    res.cookie(MFA_PENDING_COOKIE, pending.token, mfaPendingCookieOptions(pending.expiresInMs));
+    res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
+    return res.redirect('/auth/mfa');
+  };
+  const startSession = (req, res, userId) => {
+    if (req.session) auth.destroySession(req.session.id);
+    const session = auth.createSession(userId);
+    res.cookie('health_session', session.id, sessionCookieOptions());
+    res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
+    return session;
+  };
   const renderLogin = (res, role, { error = null, message = null, statusCode = 200 } = {}) => res.status(statusCode).render('login', {
     title: `${roleDetails[role].label} sign in`, role, roleInfo: roleDetails[role],
     error, message, googleEnabled: role === 'patient' && googleOAuth.enabled,
@@ -271,6 +328,8 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
         browserToken: req.cookies.health_google_browser || '',
       });
       const patient = accounts.authenticateGooglePatient(identity);
+      res.clearCookie('health_google_browser', { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/auth/google' });
+      if (mfa.isEnabled(patient.id)) return beginMfaChallenge(req, res, patient.id);
       if (req.session) auth.destroySession(req.session.id);
       const session = auth.createSession(patient.id);
       res.clearCookie('health_google_browser', { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/auth/google' });
@@ -330,10 +389,16 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       if (expectedRole && user.role !== expectedRole) {
         throw new AuthenticationError(`This account is not a ${roleDetails[expectedRole].label.toLowerCase()} account. Choose the correct sign-in option.`);
       }
-      if (req.session) auth.destroySession(req.session.id);
-      const session = auth.createSession(user.id);
-      res.cookie('health_session', session.id, sessionCookieOptions());
-      res.clearCookie(authCsrfCookie, { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
+      if (mfa.isEnabled(user.id)) {
+        if (!wantsJson(req)) return beginMfaChallenge(req, res, user.id);
+        if (!credentials.otp && !credentials.recoveryCode) {
+          throw new AppError('A two-factor code is required for this account', 401, 'mfa_required');
+        }
+        if (!mfa.verifySecondFactor(user.id, { code: credentials.otp, recoveryCode: credentials.recoveryCode })) {
+          throw new AuthenticationError('Invalid two-factor code');
+        }
+      }
+      const session = startSession(req, res, user.id);
       if (wantsJson(req)) return res.status(200).json({ user, csrfToken: session.csrfToken });
       return res.redirect('/dashboard');
     } catch (error) {
@@ -357,6 +422,47 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     (error, req, res, next) => loginErrorPage(Object.hasOwn(roleDetails, req.params.role) ? req.params.role : null)(error, req, res, next));
   router.post('/api/auth/login', loginClientLimiter, loginAccountLimiter, loginHandler());
 
+  const renderMfaChallenge = (res, { error = null, statusCode = 200, attemptsRemaining } = {}) => res.status(statusCode).render('mfa-challenge', {
+    title: 'Two-factor verification', error, attemptsRemaining, csrfToken: setAuthFormToken(res),
+  });
+  router.get('/auth/mfa', (req, res) => {
+    const pending = mfa.getPendingLogin(req.cookies[MFA_PENDING_COOKIE]);
+    if (!pending) {
+      clearMfaPending(res);
+      return redirectWithFlash(res, '/login', 'error', 'Your sign-in expired. Enter your email and password again.');
+    }
+    return renderMfaChallenge(res, { error: res.locals.flash.error, attemptsRemaining: pending.attemptsRemaining });
+  });
+  router.post('/auth/mfa', mfaChallengeLimiter, (req, res, next) => {
+    const token = req.cookies[MFA_PENDING_COOKIE];
+    try {
+      if (!validAnonymousCsrf(req)) throw new AuthorizationError('Your form expired. Refresh the page and try again.');
+      const input = safeParse(mfaChallengeSchema, req.body);
+      const result = mfa.completePendingLogin(token, { code: input.code, recoveryCode: input.code ? '' : input.recoveryCode });
+      clearMfaPending(res);
+      startSession(req, res, result.userId);
+      if (result.method === 'recovery') {
+        return redirectWithFlash(res, '/dashboard', 'message', `Signed in with a recovery code. ${result.recoveryCodesRemaining} recovery code${result.recoveryCodesRemaining === 1 ? '' : 's'} left; create new ones from Account security if you are running low.`);
+      }
+      return res.redirect('/dashboard');
+    } catch (error) {
+      if (!(error instanceof AppError) || wantsJson(req)) return next(error);
+      const pending = mfa.getPendingLogin(token);
+      if (!pending) {
+        clearMfaPending(res);
+        return redirectWithFlash(res, '/login', 'error', error.message);
+      }
+      return renderMfaChallenge(res, { error: error.message, statusCode: error.statusCode, attemptsRemaining: pending.attemptsRemaining });
+    }
+  });
+  router.use('/auth/mfa', (error, req, res, next) => {
+    if (error instanceof AppError && error.statusCode === 429 && !wantsJson(req)) {
+      clearMfaPending(res);
+      return redirectWithFlash(res, '/login', 'error', error.message);
+    }
+    return next(error);
+  });
+
   router.post('/auth/logout', requireAuth, requireCsrf, (req, res) => {
     auth.destroySession(req.session.id);
     res.clearCookie('health_session', { httpOnly: true, sameSite: 'lax', secure: config.cookieSecure, path: '/' });
@@ -378,6 +484,85 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       errorMessage: res.locals.flash.error,
     };
     return renderOrJson(req, res, 'dashboard', model);
+  });
+
+  const noStore = (res) => res.set('Cache-Control', 'no-store');
+  const renderRecoveryCodes = (req, res, recoveryCodes, heading) => {
+    noStore(res);
+    if (wantsJson(req)) return res.status(200).json({ recoveryCodes });
+    return res.status(200).render('mfa-recovery-codes', { title: 'Save your recovery codes', heading, recoveryCodes });
+  };
+  const securityErrorOr = (req, res, next, error) => {
+    if (!wantsJson(req) && error instanceof AppError && ![401, 403].includes(error.statusCode)) {
+      return redirectWithFlash(res, '/account/security', 'error', error.message);
+    }
+    return next(error);
+  };
+
+  router.get('/account/security', requireAuth, async (req, res, next) => {
+    try {
+      const user = req.session.user;
+      const status = mfa.status(user.id);
+      let setup = null;
+      if (!status.enabled) {
+        const pending = mfa.ensurePendingEnrollment(user);
+        const qrSvg = await QRCode.toString(pending.otpauthUri, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
+        setup = {
+          secret: pending.secret,
+          secretGroups: pending.secret.match(/.{1,4}/g).join(' '),
+          otpauthUri: pending.otpauthUri,
+          qrDataUri: `data:image/svg+xml;base64,${Buffer.from(qrSvg).toString('base64')}`,
+        };
+      }
+      noStore(res);
+      const required = mfa.isRequiredFor(user);
+      if (wantsJson(req)) return res.json({ status, required, setup: setup && { secret: setup.secret, otpauthUri: setup.otpauthUri } });
+      return res.render('account-security', {
+        title: 'Account security', status, setup, required,
+        message: res.locals.flash.message, errorMessage: res.locals.flash.error,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  });
+  router.post('/account/mfa/enable', requireAuth, requireCsrf, mfaManagementLimiter, (req, res, next) => {
+    try {
+      const { code } = safeParse(mfaCodeSchema, req.body);
+      const { recoveryCodes } = mfa.confirmEnrollment(req.session.user, code, sessionDigest(req.session.id));
+      return renderRecoveryCodes(req, res, recoveryCodes, 'Two-factor authentication is on');
+    } catch (error) {
+      return securityErrorOr(req, res, next, error);
+    }
+  });
+  router.post('/account/mfa/recovery-codes', requireAuth, requireCsrf, mfaManagementLimiter, (req, res, next) => {
+    try {
+      const { code } = safeParse(mfaCodeSchema, req.body);
+      const { recoveryCodes } = mfa.regenerateRecoveryCodes(req.session.user, code);
+      return renderRecoveryCodes(req, res, recoveryCodes, 'New recovery codes created');
+    } catch (error) {
+      return securityErrorOr(req, res, next, error);
+    }
+  });
+  router.post('/account/mfa/disable', requireAuth, requireCsrf, mfaManagementLimiter, (req, res, next) => {
+    try {
+      const { code } = safeParse(mfaCodeSchema, req.body);
+      mfa.disable(req.session.user, code);
+      if (wantsJson(req)) return res.status(204).end();
+      return redirectWithFlash(res, '/account/security', 'message', 'Two-factor authentication is off.');
+    } catch (error) {
+      return securityErrorOr(req, res, next, error);
+    }
+  });
+  router.post('/admin/accounts/:id/reset-mfa', requireRole('admin'), requireCsrf, (req, res, next) => {
+    try {
+      const result = mfa.adminReset(req.session.user, Number(req.params.id));
+      if (wantsJson(req)) return res.status(200).json(result);
+      return redirectWithFlash(res, '/dashboard', 'message', result.reset
+        ? 'Two-factor authentication was reset and the account was signed out everywhere.'
+        : 'That account had no two-factor authentication; its sessions were signed out.');
+    } catch (error) {
+      return dashboardErrorOr(req, res, next, error);
+    }
   });
 
   const createAccountHandler = (allowAdmin) => (req, res, next) => {

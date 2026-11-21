@@ -25,6 +25,7 @@
 | CSRF | Per-session token on authenticated mutations; double-submit cookie on anonymous forms; constant-time comparison | Integration and e2e CSRF tests |
 | RBAC and ownership | `requireRole` at routes plus re-checks inside services | `ownership and role boundaries…` tests, e2e authorization spec |
 | Failed-login throttling | `loginClientLimiter`, `loginAccountLimiter` in `src/http/routes.js` | Hardening test |
+| Two-factor authentication | RFC 6238 TOTP; AES-256-GCM-encrypted seeds bound to the user; replay barrier; hashed single-use recovery codes; pending sign-in with 5 attempts and 5-minute expiry; staff enrolment enforced; admin reset revokes sessions; audited | `test/mfa.test.js`, `e2e/mfa.spec.js` |
 | Password reset | 256-bit tokens stored hashed, 30-minute expiry, single use, older tokens superseded, sessions revoked, generic response with a fixed minimum delay, delivery decoupled from response timing, rate limited | `test/password-reset.test.js`, integration test |
 | Google OAuth | PKCE S256, state bound to a browser cookie, nonce, `iss`/`aud`/`azp`/`exp`/`email_verified` checks, patient-only linking, subject pinning | `test/authentication-ux.test.js` (mocked provider) |
 | Output encoding | All EJS output uses `<%= %>`; no `<%-` in active views | `grep "<%-" src/views` returns nothing |
@@ -53,7 +54,7 @@ Full evidence and reproduction steps are in `docs/industry-readiness-audit.md`.
 | P2-4 | P2 | No purge of expired credentials | Fixed |
 | P2-5 | P2 | Login timing revealed which emails have accounts | Fixed |
 | P2-9 | P2 | Playwright advisory GHSA-7mvr-c777-76hp (dev dependency) | Fixed |
-| P2-13 | P2 | No MFA for staff; no audit viewer | Open |
+| P2-13 | P2 | No MFA for staff; no audit viewer | MFA fixed (TOTP, required for staff in production); audit viewer open |
 | P3-1 | P3 | Non-constant-time CSRF comparison | Fixed |
 | P3-3 | P3 | Legacy unmounted code with plaintext-password logic | Open (recommend deletion) |
 | P3-5 | P3 | Length-only password policy | Open |
@@ -62,7 +63,7 @@ Full evidence and reproduction steps are in `docs/industry-readiness-audit.md`.
 
 1. **Leaked credential (P0-1).** Until revoked, anyone can send email as the project's Gmail account.
 2. **Single-process rate limits.** Restarting the process resets counters, and several instances would each have their own budget.
-3. **No second factor.** A phished administrator password grants full access. Administrator creation needs an explicit confirmation and is audited, but there is no step-up authentication.
+3. **Second factor is TOTP, not phishing-resistant.** A real-time phishing proxy can relay a code. WebAuthn/passkeys would close this. `MFA_ENCRYPTION_KEY` must be protected and backed up separately from the database; whoever holds both the key and a database copy can derive users' codes.
 4. **Email-based Google linking.** A verified Google email links to an existing patient account with the same email. This is safe only while email ownership is verified by Google (enforced) and staff accounts are excluded (enforced).
 5. **At-least-once notifications.** A future provider must deduplicate by `eventId`; the Resend reset adapter sends an idempotency key.
 6. **Backups contain health data.** Backups are integrity-checked and created owner-only, but they are not encrypted at rest by the application. Encrypt the volume or the off-host copy.
@@ -71,7 +72,7 @@ Full evidence and reproduction steps are in `docs/industry-readiness-audit.md`.
 ## Recommended next security work
 
 1. Revoke the leaked app password and decide whether to rewrite history.
-2. Add TOTP MFA for doctor and administrator accounts, with recovery codes and audited enrolment.
+2. ~~Add TOTP MFA for staff~~ (done). Next: offer WebAuthn/passkeys for phishing resistance.
 3. Move password hashing off the main thread (worker pool or native argon2id with rehash on login).
 4. Add an administrator audit-log viewer with filters (read-only, paginated).
 5. Add breached-password screening (k-anonymity range API or an offline list) at registration and reset.

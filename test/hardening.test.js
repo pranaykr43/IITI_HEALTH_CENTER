@@ -138,7 +138,7 @@ test('failed sign-ins are throttled per client and email while successful sign-i
 });
 
 test('metrics require a bearer token when configured and are hidden in production without one', async () => {
-  const productionConfig = { dbPath: ':memory:', nodeEnv: 'production', demoMode: true, cookieSecure: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', logLevel: 'silent' };
+  const productionConfig = { dbPath: ':memory:', nodeEnv: 'production', mfaEncryptionKey: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=', demoMode: true, cookieSecure: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example', logLevel: 'silent' };
   const hidden = createApp({ config: productionConfig });
   openSystems.add(hidden);
   assert.equal((await request(hidden.app).get('/metrics')).status, 404);
@@ -203,7 +203,7 @@ test('housekeeping removes expired credentials and aged operational rows but kee
   insertEvent.run('recent-delivered', 'delivered', iso(-DAY_MS), iso(-DAY_MS), iso(-DAY_MS));
 
   const removed = createHousekeepingService(db, { now: () => nowMs }).run();
-  assert.deepEqual(removed, { sessions: 1, passwordResetTokens: 1, oauthTransactions: 0, idempotencyKeys: 1, deliveredEvents: 1 });
+  assert.deepEqual(removed, { sessions: 1, passwordResetTokens: 1, oauthTransactions: 0, mfaPendingLogins: 0, idempotencyKeys: 1, deliveredEvents: 1 });
   assert.deepEqual(db.prepare('SELECT id FROM sessions').all().map((row) => row.id), ['live']);
   assert.deepEqual(db.prepare('SELECT token_hash FROM password_reset_tokens').all().map((row) => row.token_hash), ['fresh']);
   assert.deepEqual(db.prepare('SELECT key FROM idempotency_keys').all().map((row) => row.key), ['recent']);
@@ -231,7 +231,8 @@ test('schema migration 5 revokes raw sessions and scrubs clinical data from exis
   const fs = require('node:fs');
   const os = require('node:os');
   const path = require('node:path');
-  const { openDatabase } = require('../src/db');
+  const { openDatabase, CURRENT_SCHEMA_VERSION } = require('../src/db');
+  const cleanup = [];
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'health-migration-5-'));
   const dbPath = path.join(dir, 'v4.sqlite');
   try {
@@ -244,13 +245,15 @@ test('schema migration 5 revokes raw sessions and scrubs clinical data from exis
     initial.close();
 
     const migrated = openDatabase(dbPath);
-    assert.equal(migrated.pragma('user_version', { simple: true }), 5);
+    cleanup.push(() => migrated.open && migrated.close());
+    assert.equal(migrated.pragma('user_version', { simple: true }), CURRENT_SCHEMA_VERSION);
     assert.equal(migrated.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
     const payload = migrated.prepare("SELECT payload_json FROM outbox_events WHERE event_id = 'e1'").get().payload_json;
     assert.doesNotMatch(payload, /Synthetic legacy symptom|9000000000|prescription/);
     assert.deepEqual(JSON.parse(payload), { appointmentId: 'appt-1', patientId: 1, doctorId: null, status: 'requested', scheduledFor: null, version: 0 });
     migrated.close();
   } finally {
+    for (const fn of cleanup) fn();
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

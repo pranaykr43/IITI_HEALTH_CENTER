@@ -226,3 +226,23 @@ test('logout revokes the session and its CSRF token cannot authorize another mut
   assert.equal(system.auth.getSession(sessionId), null);
   assert.equal((await agent.get('/dashboard')).status, 302);
 });
+
+test('Google sign-in still requires the second factor when the patient has enabled MFA', async () => {
+  const { totp } = require('../src/security/totp');
+  const { system } = createSystem({ google: true });
+  const first = request.agent(system.app);
+  const started = await first.get('/auth/google');
+  const firstResult = await googleCallback(first, new URL(started.headers.location).searchParams.get('state'));
+  assert.equal(firstResult.headers.location, '/dashboard');
+  const user = system.db.prepare("SELECT id, email, role FROM users WHERE email = 'new.patient@example.test'").get();
+  const { secret } = system.mfa.ensurePendingEnrollment(user);
+  system.mfa.confirmEnrollment(user, totp(secret), null);
+
+  const second = request.agent(system.app);
+  const restarted = await second.get('/auth/google');
+  const result = await googleCallback(second, new URL(restarted.headers.location).searchParams.get('state'));
+  assert.equal(result.status, 302);
+  assert.equal(result.headers.location, '/auth/mfa');
+  assert.doesNotMatch(String(result.headers['set-cookie']), /health_session=[0-9a-f]/);
+  assert.equal((await second.get('/auth/mfa')).status, 200);
+});

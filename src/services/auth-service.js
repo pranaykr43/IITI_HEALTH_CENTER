@@ -81,9 +81,10 @@ function createAuthService(db, config) {
     const session = db.prepare(`
       SELECT sessions.id, sessions.csrf_token, sessions.expires_at,
              users.id AS user_id, users.email, users.name, users.role, users.account_status,
-             doctors.id AS doctor_id
+             doctors.id AS doctor_id, user_mfa.enabled_at AS mfa_enabled_at
       FROM sessions JOIN users ON users.id = sessions.user_id
       LEFT JOIN doctors ON doctors.user_id = users.id
+      LEFT JOIN user_mfa ON user_mfa.user_id = users.id
       WHERE sessions.id = ?
     `).get(digest);
     if (!session) return null;
@@ -95,14 +96,17 @@ function createAuthService(db, config) {
       id,
       csrfToken: session.csrf_token,
       expiresAt: session.expires_at,
-      user: publicUser({
-        id: session.user_id,
-        email: session.email,
-        name: session.name,
-        role: session.role,
-        doctor_id: session.doctor_id,
-        account_status: session.account_status,
-      }),
+      user: {
+        ...publicUser({
+          id: session.user_id,
+          email: session.email,
+          name: session.name,
+          role: session.role,
+          doctor_id: session.doctor_id,
+          account_status: session.account_status,
+        }),
+        mfaEnabled: Boolean(session.mfa_enabled_at),
+      },
     };
   }
 
