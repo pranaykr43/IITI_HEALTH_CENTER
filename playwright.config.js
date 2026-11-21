@@ -9,7 +9,10 @@ module.exports = defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
+  // In CI, the github reporter turns each failure into a visible annotation on the run.
+  reporter: process.env.CI
+    ? [['github'], ['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]]
+    : [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   outputDir: 'test-results',
   use: {
     ...devices['Desktop Chrome'],
