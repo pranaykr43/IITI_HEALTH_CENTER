@@ -28,7 +28,7 @@
 | Two-factor authentication | RFC 6238 TOTP; AES-256-GCM-encrypted seeds bound to the user; replay barrier; hashed single-use recovery codes; pending sign-in with 5 attempts and 5-minute expiry; staff enrolment enforced; admin reset revokes sessions; audited | `test/mfa.test.js`, `e2e/mfa.spec.js` |
 | Password reset | 256-bit tokens stored hashed, 30-minute expiry, single use, older tokens superseded, sessions revoked, generic response with a fixed minimum delay, delivery decoupled from response timing, rate limited | `test/password-reset.test.js`, integration test |
 | Google OAuth | PKCE S256, state bound to a browser cookie, nonce, `iss`/`aud`/`azp`/`exp`/`email_verified` checks, patient-only linking, subject pinning | `test/authentication-ux.test.js` (mocked provider) |
-| Output encoding | All EJS output uses `<%= %>`; no `<%-` in active views | `grep "<%-" src/views` returns nothing |
+| Output encoding | All EJS data output uses `<%= %>`; `<%-` appears only for `include()` of partials; slot data reaches the browser in an escaped `data-` attribute, not a script block | `grep "<%-" src/views | grep -v include` returns nothing |
 | SQL injection | Parameterised `better-sqlite3` statements only; the one dynamic SQL fragment (migration column names) is built from a fixed allowlist | Code review |
 | Security headers | Helmet defaults (CSP `default-src 'self'`, `frame-ancestors 'self'`, nosniff, Referrer-Policy no-referrer), HSTS and `upgrade-insecure-requests` in production | Integration test |
 | Log hygiene | Query strings stripped from request logs; authorization, cookie, CSRF, password, token and reset-URL fields redacted | `src/http/app.js` |

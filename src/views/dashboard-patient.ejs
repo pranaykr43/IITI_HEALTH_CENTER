@@ -1,0 +1,49 @@
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'dashboard' }) %>
+<main id="main" class="workspace">
+  <%- include('partials/flash') %>
+  <div class="workspace-heading">
+    <div>
+      <h1>Your appointments</h1>
+<%
+  const waiting = active.filter((item) => item.status === 'requested').length;
+  const next = active.filter((item) => item.status === 'confirmed' && item.scheduledFor).sort((x, y) => Date.parse(x.scheduledFor) - Date.parse(y.scheduledFor))[0];
+  const nextParts = next ? clinicDateParts(next.scheduledFor) : null;
+%>
+      <p class="lede"><% if (next) { %>Your next visit is with <%= next.doctorName %> on <%= nextParts.weekday %> <%= nextParts.day %> <%= nextParts.month %> at <%= nextParts.time %> <%= clinicZoneLabel %>.<% } %><% if (waiting) { %> <%= waiting %> request<%= waiting === 1 ? ' is' : 's are' %> waiting to be scheduled; the time appears on the slip once it's booked.<% } %><% if (!next && !waiting) { %>Nothing open right now. Request an appointment and follow it here.<% } %></p>
+    </div>
+    <a class="button primary" href="/appointments/new">Request an appointment</a>
+  </div>
+
+  <% if (!currentUser.mfaEnabled) { %>
+    <aside class="callout">
+      <p><strong>Protect your account.</strong> Turn on two-factor authentication so a stolen password alone can't open your health records.</p>
+      <a class="button secondary" href="/account/security">Set up two-factor</a>
+    </aside>
+  <% } %>
+
+  <section aria-labelledby="open-title" class="slip-section">
+    <h2 id="open-title">Open</h2>
+    <% if (active.length) { %>
+      <div class="slip-list"><% active.forEach((item) => { %><%- include('partials/slip', { item }) %><% }) %></div>
+    <% } else { %>
+      <div class="empty">
+        <svg viewBox="0 0 64 48" aria-hidden="true" focusable="false"><path d="M8 6h48a3 3 0 0 1 3 3v10a5 5 0 0 0 0 10v10a3 3 0 0 1-3 3H8a3 3 0 0 1-3-3V29a5 5 0 0 0 0-10V9a3 3 0 0 1 3-3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/><path d="M28 17h8v6h6v8h-6v6h-8v-6h-6v-8h6z" fill="currentColor" opacity=".35"/></svg>
+        <h3>No open appointments</h3>
+        <p>Tell us what you need help with. An administrator reviews it, then assigns a doctor and a time.</p>
+        <a class="button primary" href="/appointments/new">Request an appointment</a>
+      </div>
+    <% } %>
+  </section>
+
+  <% if (history.length) { %>
+    <section aria-labelledby="history-title" class="slip-section">
+      <h2 id="history-title">Past and closed</h2>
+      <div class="slip-list"><% history.forEach((item) => { %><%- include('partials/slip', { item }) %><% }) %></div>
+    </section>
+  <% } %>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

@@ -8,8 +8,9 @@ async function expectNoSeriousAxeViolations(page, label, { reloadAfter = false }
   const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
   expect(result.violations.filter((item) => item.impact === 'critical' || item.impact === 'serious'), `${label} axe findings`).toEqual([]);
   // Filling an input after an axe scan crashes the Firefox page under Playwright 1.65 on
-  // Windows; a reload clears the injected axe state and keeps the page under test the same.
-  if (reloadAfter) await page.reload();
+  // Windows; a reload clears the injected axe state. WebKit hangs on that reload, so it is
+  // applied to Firefox only.
+  if (reloadAfter && page.context().browser()?.browserType().name() === 'firefox') await page.reload();
 }
 
 async function signOut(page) {

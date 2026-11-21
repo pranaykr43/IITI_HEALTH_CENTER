@@ -1,0 +1,48 @@
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'dashboard' }) %>
+<main id="main" class="workspace">
+  <%- include('partials/flash') %>
+  <div class="workspace-heading">
+    <div>
+      <h1>Your schedule</h1>
+      <p class="lede"><%= agenda.today.length ? `${agenda.today.length} visit${agenda.today.length === 1 ? '' : 's'} today` : 'No visits booked for today' %><%= agenda.overdue.length ? `, ${agenda.overdue.length} past visit${agenda.overdue.length === 1 ? '' : 's'} still to record` : '' %>.</p>
+    </div>
+  </div>
+
+  <section aria-labelledby="today-title" class="slip-section">
+    <h2 id="today-title">Today</h2>
+    <% if (agenda.today.length) { %>
+      <div class="slip-list"><% agenda.today.forEach((item, index) => { %><%- include('partials/slip', { item, openRecord: index === 0 }) %><% }) %></div>
+    <% } else { %>
+      <div class="empty empty-compact"><h3>A clear day</h3><p>New visits appear here as soon as an administrator books them with you.</p></div>
+    <% } %>
+  </section>
+
+  <% if (agenda.overdue.length) { %>
+    <section aria-labelledby="overdue-title" class="slip-section">
+      <h2 id="overdue-title">Still to record</h2>
+      <p class="section-note">These visits have passed. Record what happened so the patient can see their summary.</p>
+      <div class="slip-list"><% agenda.overdue.forEach((item) => { %><%- include('partials/slip', { item }) %><% }) %></div>
+    </section>
+  <% } %>
+
+  <section aria-labelledby="upcoming-title" class="slip-section">
+    <h2 id="upcoming-title">Coming up</h2>
+    <% if (agenda.upcoming.length) { %>
+      <div class="slip-list"><% agenda.upcoming.forEach((item) => { %><%- include('partials/slip', { item }) %><% }) %></div>
+    <% } else { %>
+      <p class="muted">No later visits booked yet.</p>
+    <% } %>
+  </section>
+
+  <% if (agenda.recent.length) { %>
+    <section aria-labelledby="recent-title" class="slip-section">
+      <h2 id="recent-title">Recently closed</h2>
+      <div class="slip-list"><% agenda.recent.forEach((item) => { %><%- include('partials/slip', { item }) %><% }) %></div>
+    </section>
+  <% } %>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

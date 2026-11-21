@@ -1,3 +1,14 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><%= title %> · Health Centre</title><link rel="stylesheet" href="/app.css"></head>
-<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/">Health Centre</a></div></header><main class="content-shell"><section class="panel error-page"><p class="section-index">Request</p><h1><%= error.message || 'Something went wrong' %></h1><p class="help-text">Request ID: <code><%= error.requestId || requestId || 'not available' %></code></p><a class="button secondary" href="/">Return home</a></section></main><footer class="site-footer"><div class="site-footer-inner"><p>Health Centre</p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore.</p></div></footer></body></html>
+<%- include('partials/head') %>
+<body class="site">
+<%- include('partials/public-header', { headerLink: { href: '/', label: 'Return home' } }) %>
+<main id="main" class="content-shell narrow">
+  <section class="panel error-page">
+    <h1><%= error.message || 'Something went wrong' %></h1>
+    <p>Go back and try again, or return to the home page. If it keeps happening, share this reference with the Health Centre team.</p>
+    <p class="help-text">Reference: <code><%= error.requestId || (typeof requestId !== 'undefined' && requestId) || 'not available' %></code></p>
+    <a class="button secondary" href="/">Return home</a>
+  </section>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

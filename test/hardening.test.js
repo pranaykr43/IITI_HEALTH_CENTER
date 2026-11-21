@@ -166,8 +166,8 @@ test('status messages cannot be injected through the URL and survive a single re
   assert.equal(misaligned.status, 302);
   assert.equal(misaligned.headers.location, '/dashboard');
   const withFlash = await admin.get('/dashboard');
-  assert.match(withFlash.text, /role="alert">Scheduled time must start on a 15-minute slot boundary/);
-  assert.doesNotMatch((await admin.get('/dashboard')).text, /15-minute slot boundary in clinic time<\/div>/);
+  assert.match(withFlash.text, /role="alert">[\s\S]{0,400}Scheduled time must start on a 15-minute slot boundary/);
+  assert.doesNotMatch((await admin.get('/dashboard')).text, /slot boundary/);
 
   const forbidden = await patient.post(`/admin/appointments/${appointment.id}/schedule`).type('form')
     .send({ _csrf: patientCsrf, doctorId: '1', scheduledFor: '2030-01-01T10:00' });

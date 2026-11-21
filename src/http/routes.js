@@ -83,7 +83,7 @@ function emailKey(req) {
   return String(req.body?.email || '').trim().toLowerCase().slice(0, 320);
 }
 
-function createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, mfa, metrics, config, options = {} }) {
+function createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, mfa, insights, audit, metrics, config, options = {} }) {
   const router = express.Router();
   const limiterDefaults = { standardHeaders: 'draft-7', legacyHeaders: false };
   const passwordResetRequestLimiter = rateLimit({
@@ -184,9 +184,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
   // Browser form posts that fail a business rule return to the dashboard with the reason
   // instead of a bare error page; API clients keep structured JSON errors.
   // Authentication and authorization failures keep their 401/403 status in every case.
-  const dashboardErrorOr = (req, res, next, error) => {
+  const dashboardErrorOr = (req, res, next, error, location = '/dashboard') => {
     if (!wantsJson(req) && error instanceof AppError && ![401, 403].includes(error.statusCode)) {
-      return redirectWithFlash(res, '/dashboard', 'error', error.message);
+      return redirectWithFlash(res, location, 'error', error.message);
     }
     return next(error);
   };
@@ -471,7 +471,30 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
   });
 
   router.get('/dashboard', requireAuth, (req, res) => {
-    const isAdmin = req.session.user.role === 'admin';
+    const user = req.session.user;
+    const isAdmin = user.role === 'admin';
+    const flash = { message: res.locals.flash.message, errorMessage: res.locals.flash.error };
+    if (!wantsJson(req)) {
+      if (user.role === 'patient') {
+        const all = appointments.listForActor(user);
+        return res.render('dashboard-patient', {
+          title: 'Your appointments', ...flash,
+          active: all.filter((item) => ['requested', 'confirmed'].includes(item.status)),
+          history: all.filter((item) => !['requested', 'confirmed'].includes(item.status)),
+        });
+      }
+      if (user.role === 'doctor') {
+        return res.render('dashboard-doctor', { title: 'Your schedule', ...flash, agenda: insights.doctorAgenda(user.doctorId) });
+      }
+      return res.render('dashboard-admin', {
+        title: 'Scheduling desk', ...flash,
+        overview: insights.adminOverview(),
+        slotBoard: insights.slotBoard(),
+        doctors: appointments.listDoctors(),
+        outboxMetrics: appointments.getOutboxMetrics(),
+      });
+    }
+    // JSON keeps its original shape for API clients.
     const model = {
       title: 'Dashboard',
       appointments: appointments.listForActor(req.session.user),
@@ -484,6 +507,25 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       errorMessage: res.locals.flash.error,
     };
     return renderOrJson(req, res, 'dashboard', model);
+  });
+
+  router.get('/admin/accounts', requireRole('admin'), (req, res) => res.render('admin-accounts', {
+    title: 'Accounts', accounts: accounts.listAccounts(),
+    message: res.locals.flash.message, errorMessage: res.locals.flash.error,
+  }));
+  router.get('/admin/notifications', requireRole('admin'), (req, res) => res.render('admin-notifications', {
+    title: 'Notifications',
+    outbox: appointments.listOutbox(),
+    outboxMetrics: appointments.getOutboxMetrics(),
+    notificationActivity: appointments.listRecentNotificationActivity(),
+    message: res.locals.flash.message, errorMessage: res.locals.flash.error,
+  }));
+  router.get('/admin/audit', requireRole('admin'), (req, res) => {
+    const category = Object.hasOwn(audit.categories, String(req.query.category || '')) ? String(req.query.category) : '';
+    const before = Number.parseInt(String(req.query.before || ''), 10);
+    const page = audit.list({ category, beforeId: Number.isInteger(before) && before > 0 ? before : null });
+    if (wantsJson(req)) return res.json(page);
+    return res.render('admin-audit', { title: 'Audit log', categories: audit.categories, category, ...page });
   });
 
   const noStore = (res) => res.set('Cache-Control', 'no-store');
@@ -557,11 +599,11 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
     try {
       const result = mfa.adminReset(req.session.user, Number(req.params.id));
       if (wantsJson(req)) return res.status(200).json(result);
-      return redirectWithFlash(res, '/dashboard', 'message', result.reset
+      return redirectWithFlash(res, '/admin/accounts', 'message', result.reset
         ? 'Two-factor authentication was reset and the account was signed out everywhere.'
         : 'That account had no two-factor authentication; its sessions were signed out.');
     } catch (error) {
-      return dashboardErrorOr(req, res, next, error);
+      return dashboardErrorOr(req, res, next, error, '/admin/accounts');
     }
   });
 
@@ -570,9 +612,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const input = safeParse(allowAdmin ? adminAccountSchema : accountSchema, req.body);
       const created = accounts.createAccount(req.session.user, input, allowAdmin);
       if (wantsJson(req)) return res.status(201).json({ user: created });
-      return redirectWithFlash(res, '/dashboard', 'message', `${created.role} account created.`);
+      return redirectWithFlash(res, '/admin/accounts', 'message', `${{ patient: 'Patient', doctor: 'Doctor', admin: 'Administrator' }[created.role]} account created for ${created.email}.`);
     } catch (error) {
-      return dashboardErrorOr(req, res, next, error);
+      return dashboardErrorOr(req, res, next, error, '/admin/accounts');
     }
   };
 
@@ -586,9 +628,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const status = action === 'disable' ? 'disabled' : 'active';
       const account = accounts.changeStatus(req.session.user, Number(req.params.id), status);
       if (wantsJson(req)) return res.status(200).json({ account });
-      return redirectWithFlash(res, '/dashboard', 'message', `Account ${status}.`);
+      return redirectWithFlash(res, '/admin/accounts', 'message', `Account ${status}.`);
     } catch (error) {
-      return dashboardErrorOr(req, res, next, error);
+      return dashboardErrorOr(req, res, next, error, '/admin/accounts');
     }
   });
 
@@ -597,9 +639,9 @@ function createRouter({ auth, appointments, accounts, passwordResets, googleOAut
       const { reason } = safeParse(redriveSchema, req.body);
       const result = appointments.redriveDeadEvent(req.session.user, req.params.eventId, reason);
       if (wantsJson(req)) return res.status(202).json({ event: result });
-      return redirectWithFlash(res, '/dashboard', 'message', 'Notification event queued for manual redrive.');
+      return redirectWithFlash(res, '/admin/notifications', 'message', 'Notification event queued for manual redrive.');
     } catch (error) {
-      return dashboardErrorOr(req, res, next, error);
+      return dashboardErrorOr(req, res, next, error, '/admin/notifications');
     }
   });
 

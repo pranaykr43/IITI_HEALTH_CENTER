@@ -89,12 +89,13 @@ test('secret box encrypts with authentication and binds ciphertext to its owner'
 
 test('configuration requires an MFA key in production and enforces staff MFA there by default', () => {
   const production = { nodeEnv: 'production', dbPath: '/var/lib/health/data/health.sqlite', demoMode: true, trustProxyHops: 1, publicBaseUrl: 'https://health.example' };
-  assert.throws(() => loadConfig(production), /MFA_ENCRYPTION_KEY must be set/);
+  // Explicit empty values keep these assertions independent of any local .env file.
+  assert.throws(() => loadConfig({ ...production, mfaEncryptionKey: '' }), /MFA_ENCRYPTION_KEY must be set/);
   assert.throws(() => loadConfig({ ...production, mfaEncryptionKey: 'c2hvcnQ=' }), /exactly 32 bytes/);
   assert.equal(loadConfig({ ...production, mfaEncryptionKey: TEST_KEY }).staffMfaRequired, true);
   assert.equal(loadConfig({ ...production, mfaEncryptionKey: crypto.randomBytes(32).toString('hex') }).staffMfaRequired, true);
   assert.equal(loadConfig({ nodeEnv: 'test' }).staffMfaRequired, false);
-  assert.equal(loadConfig({ nodeEnv: 'test' }).mfaEncryptionKeyIsDevelopmentDefault, true);
+  assert.equal(loadConfig({ nodeEnv: 'test', mfaEncryptionKey: '' }).mfaEncryptionKeyIsDevelopmentDefault, true);
 });
 
 test('staff must enrol before using the app; enrolment stores an encrypted seed and hashed recovery codes', async () => {
@@ -247,7 +248,7 @@ test('administrators can reset another user’s MFA, which signs that user out, 
   const doctorId = system.db.prepare("SELECT id FROM users WHERE email = 'doctor@health.local'").get().id;
   const adminId = system.db.prepare("SELECT id FROM users WHERE email = 'admin@health.local'").get().id;
 
-  const listing = await admin.get('/dashboard').set('Accept', 'text/html');
+  const listing = await admin.get('/admin/accounts').set('Accept', 'text/html');
   assert.match(listing.text, /Reset 2FA<span class="sr-only"> for Dr\. Demo<\/span>/);
   assert.equal((await doctor.post(`/admin/accounts/${adminId}/reset-mfa`).set('Accept', 'application/json').set('x-csrf-token', doctorCsrf)).status, 403);
   assert.equal((await admin.post(`/admin/accounts/${adminId}/reset-mfa`).set('Accept', 'application/json').set('x-csrf-token', adminCsrf)).status, 409);

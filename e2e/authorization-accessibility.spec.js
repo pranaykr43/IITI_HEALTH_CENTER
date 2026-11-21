@@ -1,6 +1,6 @@
 const { test, expect, request } = require('@playwright/test');
 const AxeBuilder = require('@axe-core/playwright').default;
-const { signIn, requestAppointment } = require('./helpers');
+const { signIn, requestAppointment, slip, slotFromNow } = require('./helpers');
 
 test('authenticated patient cannot perform admin or doctor actions; CSRF is enforced', async ({ page, baseURL }) => {
   await signIn(page, 'patient');
@@ -24,18 +24,22 @@ test('authenticated patient cannot perform admin or doctor actions; CSRF is enfo
   await anonymous.dispose();
 });
 
-test('doctor sees only assigned appointments and cannot complete another doctor’s booking', async ({ browser }) => {
+test('doctor sees only assigned appointments and cannot complete another doctor’s booking', async ({ browser }, testInfo) => {
   const patient = await browser.newPage();
   await signIn(patient, 'patient');
   const appointmentId = await requestAppointment(patient);
   await signIn(patient, 'admin');
-  const row = patient.locator('tbody tr').filter({ hasText: appointmentId });
+  const row = slip(patient, appointmentId);
   await row.locator('select[name="doctorId"]').selectOption({ index: 1 });
-  await row.locator('input[name="scheduledFor"]').fill('2030-01-02T10:30');
+  // Each browser project books its own slot because all projects share one server.
+  const offset = { chromium: 40, firefox: 50, webkit: 60 }[testInfo.project.name];
+  await row.locator('input[name="scheduledFor"]').fill(slotFromNow(offset));
   await row.getByRole('button', { name: 'Schedule' }).click();
+  await expect(patient.getByRole('status')).toContainText('Appointment scheduled.');
 
   await signIn(patient, 'doctor2');
-  await expect(patient.locator('tbody tr').filter({ hasText: appointmentId })).toHaveCount(0);
+  await expect(patient.getByRole('heading', { name: 'Your schedule' })).toBeVisible();
+  await expect(patient.locator(`[data-appointment-id="${appointmentId}"]`)).toHaveCount(0);
   const response = await patient.request.post(`/doctor/appointments/${appointmentId}/complete`, {
     form: { test: '', medicine: '', advice: '' },
   });
@@ -55,6 +59,9 @@ test('home, login, patient, admin, and doctor pages have no serious axe violatio
     { url: '/password/reset', role: null },
     { url: '/dashboard', role: 'patient' },
     { url: '/dashboard', role: 'admin' },
+    { url: '/admin/accounts', role: 'admin' },
+    { url: '/admin/notifications', role: 'admin' },
+    { url: '/admin/audit', role: 'admin' },
     { url: '/dashboard', role: 'doctor' },
     { url: '/appointments/new', role: 'patient' },
   ];

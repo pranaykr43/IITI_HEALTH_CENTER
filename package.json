@@ -22,7 +22,8 @@
     "backup:daily": "bash scripts/daily-backup.sh",
     "test:e2e": "node scripts/run-e2e.js",
     "test:e2e:headed": "node scripts/run-e2e.js --headed",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "seed:showcase": "node scripts/seed-showcase.js"
   },
   "engines": {
     "node": ">=24"

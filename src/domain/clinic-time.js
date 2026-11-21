@@ -125,7 +125,24 @@ function formatClinicDateTime(value, timeZone) {
   }).format(date);
 }
 
+// Parts for the appointment slip's date stub, in clinic time.
+function clinicDateParts(value, timeZone) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const clock = wallClock(date, timeZone);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return {
+    day: clock.day,
+    month: months[clock.month - 1],
+    year: clock.year,
+    weekday: clock.weekday,
+    time: `${String(clock.hour).padStart(2, '0')}:${String(clock.minute).padStart(2, '0')}`,
+  };
+}
+
 module.exports = {
+  clinicDateParts,
   parseScheduleInput,
   assertBookableSlot,
   parseAvailableDays,

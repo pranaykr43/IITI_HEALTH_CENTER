@@ -1,0 +1,109 @@
+<%
+  const statusLabels = { requested: 'Waiting for scheduling', confirmed: 'Scheduled', completed: 'Visit recorded', cancelled: 'Cancelled', rejected: 'Declined' };
+  const viewer = currentUser.role;
+  const ref = String(item.id).slice(0, 8).toUpperCase();
+  const when = clinicDateParts(item.scheduledFor);
+  const headline = viewer === 'patient' ? (item.doctorName ? `Visit with ${item.doctorName}` : 'Appointment request') : item.patientName;
+  const steps = [
+    { key: 'requested', label: 'Requested', done: true },
+    { key: 'confirmed', label: 'Scheduled', done: ['confirmed', 'completed'].includes(item.status) },
+    { key: 'completed', label: 'Visit recorded', done: item.status === 'completed' },
+  ];
+  const closed = ['cancelled', 'rejected'].includes(item.status);
+%>
+<article class="slip slip-<%= item.status %>" data-appointment-id="<%= item.id %>" aria-labelledby="slip-<%= item.id %>">
+  <div class="slip-body">
+    <header class="slip-head">
+      <div>
+        <h3 id="slip-<%= item.id %>"><%= headline %></h3>
+        <p class="slip-ref">Ref <span class="ref-code"><%= ref %></span><span class="sr-only"> (full reference <%= item.id %>)</span></p>
+      </div>
+      <span class="stamp stamp-<%= item.status %>"><%= statusLabels[item.status] || item.status %></span>
+    </header>
+
+    <% if (viewer === 'patient') { %>
+      <% if (closed) { %>
+        <p class="slip-closed"><%= item.status === 'cancelled' ? 'This request was cancelled and will not go ahead.' : 'This request was declined. Request a new appointment if you still need care.' %></p>
+      <% } else { %>
+        <ol class="progress" aria-label="Progress">
+          <% const currentStep = steps.filter((s) => s.done).pop().key; %>
+          <% steps.forEach((step) => { %><li class="<%= step.done ? 'is-done' : '' %>"<% if (step.key === currentStep) { %> aria-current="step"<% } %>><%= step.label %><% if (!step.done) { %><span class="sr-only"> (not yet)</span><% } %></li><% }) %>
+        </ol>
+      <% } %>
+    <% } %>
+
+    <dl class="slip-facts">
+      <div><dt>Requested</dt><dd><%= formatDateTime(item.requestedAt) %></dd></div>
+      <% if (viewer !== 'patient') { %>
+        <% if (viewer === 'admin') { %><div><dt>Doctor</dt><dd><%= item.doctorName || 'Not assigned' %></dd></div><% } %>
+        <div><dt>Patient</dt><dd><%= item.patientAge %> years, <%= item.patientPhone %></dd></div>
+      <% } %>
+      <% if (viewer === 'doctor' || viewer === 'patient') { %>
+        <div class="fact-wide"><dt><%= viewer === 'patient' ? 'Your request' : 'Reason for visit' %></dt><dd><%= item.symptoms %> <span class="muted">(<%= item.daysWithSymptoms %> day<%= item.daysWithSymptoms === 1 ? '' : 's' %>)</span></dd></div>
+      <% } %>
+    </dl>
+
+    <% if (item.status === 'completed' && (item.prescription.test || item.prescription.medicine || item.prescription.advice) && viewer !== 'admin') { %>
+      <section class="visit-summary" aria-label="Visit summary">
+        <h4>Visit summary</h4>
+        <dl>
+          <% if (item.prescription.test) { %><div><dt>Test</dt><dd><%= item.prescription.test %></dd></div><% } %>
+          <% if (item.prescription.medicine) { %><div><dt>Medicine</dt><dd><%= item.prescription.medicine %></dd></div><% } %>
+          <% if (item.prescription.advice) { %><div><dt>Advice</dt><dd><%= item.prescription.advice %></dd></div><% } %>
+        </dl>
+      </section>
+    <% } %>
+
+    <% if (viewer === 'admin' && item.status === 'requested') { %>
+      <form method="post" action="/admin/appointments/<%= item.id %>/schedule" class="schedule-form" data-schedule-form>
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field">
+          <label for="doctor-<%= item.id %>">Doctor</label>
+          <select id="doctor-<%= item.id %>" name="doctorId" required data-doctor-select>
+            <option value="">Choose a doctor</option>
+            <% doctors.forEach((doctor) => { %><option value="<%= doctor.id %>"><%= doctor.name %> (<%= doctor.availableDays %>, <%= doctor.startTime %>–<%= doctor.endTime %>)</option><% }) %>
+          </select>
+        </div>
+        <div class="slot-picker" data-slot-picker hidden>
+          <p class="slot-picker-title" id="slots-<%= item.id %>">Open slots</p>
+          <div class="slot-days" role="group" aria-labelledby="slots-<%= item.id %>" data-slot-days></div>
+          <div class="slot-grid" role="group" aria-label="Times" data-slot-grid></div>
+        </div>
+        <div class="field">
+          <label for="time-<%= item.id %>">Time (<%= clinicZoneLabel %>)</label>
+          <input id="time-<%= item.id %>" name="scheduledFor" type="datetime-local" step="<%= slotMinutes * 60 %>" required data-slot-input>
+          <span class="field-hint"><%= slotMinutes %>-minute slots in clinic time. Pick an open slot above or type a time.</span>
+        </div>
+        <button class="button primary" type="submit">Schedule</button>
+      </form>
+    <% } else if (viewer === 'doctor' && item.status === 'confirmed') { %>
+      <details class="record-visit"<% if (typeof openRecord !== 'undefined' && openRecord) { %> open<% } %>>
+        <summary>Record this visit</summary>
+        <form method="post" action="/doctor/appointments/<%= item.id %>/complete" class="form-stack">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <div class="field"><label for="test-<%= item.id %>">Test</label><input id="test-<%= item.id %>" name="test" maxlength="500"></div>
+          <div class="field"><label for="medicine-<%= item.id %>">Medicine</label><textarea id="medicine-<%= item.id %>" name="medicine" rows="2" maxlength="2000"></textarea></div>
+          <div class="field"><label for="advice-<%= item.id %>">Advice</label><textarea id="advice-<%= item.id %>" name="advice" rows="2" maxlength="2000"></textarea></div>
+          <button class="button primary" type="submit">Complete visit</button>
+        </form>
+      </details>
+    <% } else if (viewer === 'patient' && ['requested', 'confirmed'].includes(item.status)) { %>
+      <form method="post" action="/appointments/<%= item.id %>/cancel" class="slip-actions">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="button quiet danger-text" type="submit">Cancel appointment</button>
+      </form>
+    <% } %>
+  </div>
+
+  <div class="slip-stub">
+    <span class="sr-only"><%= when ? `Scheduled for ${when.weekday} ${when.day} ${when.month}, ${when.time} ${clinicZoneLabel}` : 'Not scheduled yet' %></span>
+    <% if (when) { %>
+      <span class="stub-weekday" aria-hidden="true"><%= when.weekday.slice(0, 3) %></span>
+      <span class="stub-day" aria-hidden="true"><%= when.day %></span>
+      <span class="stub-month" aria-hidden="true"><%= when.month %></span>
+      <span class="stub-time" aria-hidden="true"><%= when.time %></span>
+    <% } else { %>
+      <span class="stub-pending" aria-hidden="true">Time to be confirmed</span>
+    <% } %>
+  </div>
+</article>

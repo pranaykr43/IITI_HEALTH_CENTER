@@ -3,9 +3,9 @@ const { signIn } = require('./helpers');
 
 test('home links to login, patient can sign in, protected route and logout work', async ({ page }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Health Centre' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Your next visit, on one slip.' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Staff sign in' })).toBeVisible();
-  await expect(page.getByText('Independent academic demonstration; not affiliated with or endorsed by IIT Indore.', { exact: false })).toBeVisible();
+  await expect(page.getByText('not affiliated with or endorsed by IIT Indore', { exact: false })).toBeVisible();
   await expect(page.getByText(/engineering showcase|local demo|try demo|explore demo/i)).toHaveCount(0);
   await page.getByRole('link', { name: 'Patient sign in' }).first().click();
   await expect(page).toHaveURL(/\/login\/patient$/);

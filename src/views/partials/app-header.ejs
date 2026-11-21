@@ -1,0 +1,36 @@
+<%
+  const navByRole = {
+    patient: [
+      { href: '/dashboard', label: 'Appointments', key: 'dashboard' },
+      { href: '/appointments/new', label: 'Request an appointment', key: 'new' },
+    ],
+    doctor: [
+      { href: '/dashboard', label: 'Schedule', key: 'dashboard' },
+    ],
+    admin: [
+      { href: '/dashboard', label: 'Scheduling desk', key: 'dashboard' },
+      { href: '/admin/accounts', label: 'Accounts', key: 'accounts' },
+      { href: '/admin/notifications', label: 'Notifications', key: 'notifications' },
+      { href: '/admin/audit', label: 'Audit log', key: 'audit' },
+    ],
+  };
+  const items = (navByRole[currentUser.role] || []).concat([{ href: '/account/security', label: 'Security', key: 'security' }]);
+  const current = typeof activeNav !== 'undefined' ? activeNav : '';
+  const roleName = { patient: 'Patient', doctor: 'Doctor', admin: 'Administrator' }[currentUser.role];
+%>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="app-header">
+  <div class="app-header-inner">
+    <%- include('brand', { brandHref: '/dashboard' }) %>
+    <nav class="app-nav" aria-label="Workspace">
+      <% items.forEach((item) => { %><a href="<%= item.href %>"<% if (item.key === current) { %> aria-current="page"<% } %>><%= item.label %><% if (item.key === 'security' && !currentUser.mfaEnabled) { %><span class="nav-dot" title="Two-factor authentication is off"><span class="sr-only"> (two-factor authentication off)</span></span><% } %></a><% }) %>
+    </nav>
+    <div class="account-menu">
+      <span class="user-chip"><span class="user-name"><%= currentUser.name %></span><span class="user-role"><%= roleName %></span></span>
+      <form method="post" action="/auth/logout">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <button class="link-button" type="submit">Sign out</button>
+      </form>
+    </div>
+  </div>
+</header>

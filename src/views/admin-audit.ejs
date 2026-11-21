@@ -1,0 +1,47 @@
+<% const detailLabels = { role: 'Role', previousStatus: 'Previous status', reason: 'Reason', scheduledFor: 'Scheduled for', doctorId: 'Doctor ID', remaining: 'Recovery codes left', redriveCount: 'Re-send number', hadMfa: 'Had two-factor', method: 'Method' }; %>
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'audit' }) %>
+<main id="main" class="workspace workspace-wide">
+  <div class="workspace-heading">
+    <div>
+      <h1>Audit log</h1>
+      <p class="lede">Every privileged action, written in the same database transaction as the change itself. Entries can't be edited or deleted from the app.</p>
+    </div>
+  </div>
+
+  <form method="get" action="/admin/audit" class="filter-bar">
+    <div class="field">
+      <label for="audit-category">Show</label>
+      <select id="audit-category" name="category">
+        <option value="">All activity</option>
+        <% Object.entries(categories).forEach(([key, label]) => { %><option value="<%= key %>"<% if (key === category) { %> selected<% } %>><%= label %></option><% }) %>
+      </select>
+    </div>
+    <button class="button secondary" type="submit">Apply</button>
+  </form>
+
+  <section class="panel" aria-labelledby="entries-title">
+    <h2 id="entries-title" class="sr-only">Entries</h2>
+    <% if (!entries.length) { %>
+      <div class="empty empty-compact"><h3>No entries</h3><p>Nothing has been recorded for this filter yet.</p></div>
+    <% } else { %>
+      <ol class="audit-list">
+        <% entries.forEach((entry) => { %>
+          <li class="audit-entry audit-<%= entry.action.split('.')[0] %>">
+            <time datetime="<%= entry.createdAt %>"><%= formatDateTime(entry.createdAt) %></time>
+            <div>
+              <p class="audit-what"><strong><%= entry.description %></strong> <span class="muted">(<%= entry.target %>)</span></p>
+              <p class="audit-who"><%= entry.actor %></p>
+              <% if (entry.details.length) { %><dl class="audit-details"><% entry.details.forEach((detail) => { %><div><dt><%= detailLabels[detail.key] || detail.key %></dt><dd><%= detail.key === 'scheduledFor' ? formatDateTime(detail.value) : detail.value %></dd></div><% }) %></dl><% } %>
+            </div>
+          </li>
+        <% }) %>
+      </ol>
+      <% if (nextBeforeId) { %><a class="button secondary" href="/admin/audit?<%= new URLSearchParams({ ...(category ? { category } : {}), before: String(nextBeforeId) }).toString() %>">Show older entries</a><% } %>
+    <% } %>
+  </section>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

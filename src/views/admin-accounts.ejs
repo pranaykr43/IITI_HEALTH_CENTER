@@ -1,0 +1,76 @@
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'accounts' }) %>
+<main id="main" class="workspace workspace-wide">
+  <%- include('partials/flash') %>
+  <div class="workspace-heading">
+    <div>
+      <h1>Accounts</h1>
+      <p class="lede"><%= accounts.length %> account<%= accounts.length === 1 ? '' : 's' %>. Doctor and administrator access is only ever created here.</p>
+    </div>
+  </div>
+
+  <div class="split">
+    <section class="panel" aria-labelledby="create-title">
+      <h2 id="create-title">Add a patient or doctor</h2>
+      <form method="post" action="/admin/accounts" class="form-stack">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <div class="field"><label for="account-name">Full name</label><input id="account-name" name="name" required maxlength="120" autocomplete="off"></div>
+        <div class="field"><label for="account-email">Email</label><input id="account-email" name="email" type="email" required maxlength="320" autocomplete="off"></div>
+        <div class="field"><label for="account-role">Role</label><select id="account-role" name="role"><option value="patient">Patient</option><option value="doctor">Doctor</option></select></div>
+        <div class="field"><label for="account-password">Temporary password</label><input id="account-password" name="password" type="password" minlength="12" maxlength="200" required autocomplete="new-password"><span class="field-hint">At least 12 characters. Share it privately; the person should change it with a password reset.</span></div>
+        <button class="button primary" type="submit">Create account</button>
+      </form>
+    </section>
+    <section class="panel panel-caution" aria-labelledby="admin-title">
+      <h2 id="admin-title">Add an administrator</h2>
+      <p class="section-note">Administrators can see every appointment, manage accounts and re-send notifications. Create one only for someone who needs all of that.</p>
+      <details class="privileged-operation">
+        <summary>Show the administrator form</summary>
+        <form method="post" action="/admin/accounts/admin" class="form-stack">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="role" value="admin">
+          <div class="field"><label for="admin-name">Full name</label><input id="admin-name" name="name" required maxlength="120" autocomplete="off"></div>
+          <div class="field"><label for="admin-email">Email</label><input id="admin-email" name="email" type="email" required maxlength="320" autocomplete="off"></div>
+          <div class="field"><label for="admin-password">Temporary password</label><input id="admin-password" name="password" type="password" minlength="12" maxlength="200" required autocomplete="new-password"></div>
+          <label class="check-label"><input type="checkbox" name="confirmAdminCreation" value="yes" required> I confirm this person needs administrator access.</label>
+          <button class="button secondary" type="submit">Create administrator</button>
+        </form>
+      </details>
+    </section>
+  </div>
+
+  <section class="panel" aria-labelledby="list-title">
+    <h2 id="list-title">All accounts</h2>
+    <div class="table-wrap">
+      <table class="data-table stack-on-mobile">
+        <caption class="sr-only">Accounts, status and two-factor authentication</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">2FA</th><th scope="col">Created</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          <% accounts.forEach((account) => { %>
+            <tr>
+              <td data-label="Name"><strong><%= account.name %></strong></td>
+              <td data-label="Email"><%= account.email %></td>
+              <td data-label="Role"><%= { patient: 'Patient', doctor: 'Doctor', admin: 'Administrator' }[account.role] %></td>
+              <td data-label="Status"><span class="stamp stamp-small stamp-<%= account.status === 'active' ? 'confirmed' : 'cancelled' %>"><%= account.status %></span></td>
+              <td data-label="2FA"><%= account.mfaEnabled ? 'On' : 'Off' %></td>
+              <td data-label="Created"><%= formatDateTime(account.createdAt) %></td>
+              <td class="row-actions">
+                <% if (account.status === 'active') { %>
+                  <form method="post" action="/admin/accounts/<%= account.id %>/disable"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small danger" type="submit">Disable<span class="sr-only"> <%= account.name %></span></button></form>
+                <% } else { %>
+                  <form method="post" action="/admin/accounts/<%= account.id %>/reactivate"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small secondary" type="submit">Reactivate<span class="sr-only"> <%= account.name %></span></button></form>
+                <% } %>
+                <% if (account.mfaEnabled && account.id !== currentUser.id) { %><form method="post" action="/admin/accounts/<%= account.id %>/reset-mfa"><input type="hidden" name="_csrf" value="<%= csrfToken %>"><button class="button small secondary" type="submit">Reset 2FA<span class="sr-only"> for <%= account.name %></span></button></form><% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+    <% if (accounts.length >= 500) { %><p class="section-note">Showing the 500 newest accounts.</p><% } %>
+  </section>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

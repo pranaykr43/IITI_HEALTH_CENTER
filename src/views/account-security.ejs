@@ -1,29 +1,11 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title><%= title %> · Health Centre</title>
-  <link rel="stylesheet" href="/app.css">
-</head>
-<body>
-  <header class="site-header"><div class="site-header-inner">
-    <a class="brand" href="/dashboard">Health Centre</a>
-    <div class="header-actions">
-      <a class="text-link" href="/dashboard">Back to dashboard</a>
-      <form method="post" action="/auth/logout">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <button class="link-button" type="submit">Sign out</button>
-      </form>
-    </div>
-  </div></header>
-
-  <main class="content-shell security-shell">
-    <% if (message) { %><div class="form-success" role="status"><%= message %></div><% } %>
-    <% if (errorMessage) { %><div class="form-error" role="alert"><%= errorMessage %></div><% } %>
-    <div class="page-heading"><p class="section-index">Account security</p><h1>Two-factor authentication</h1>
-      <p>Two-factor authentication asks for a code from an authenticator app on your phone after your password, so a stolen password alone cannot open your account.</p>
-    </div>
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'security' }) %>
+  <main id="main" class="workspace security-shell">
+    <%- include('partials/flash') %>
+    <div class="workspace-heading"><div><h1>Two-factor authentication</h1>
+      <p class="lede">Two-factor authentication asks for a code from an authenticator app on your phone after your password, so a stolen password alone cannot open your account.</p>
+    </div></div>
 
     <% if (status.enabled) { %>
       <section class="panel" aria-labelledby="mfa-on-title">
@@ -77,6 +59,6 @@
       </section>
     <% } %>
   </main>
-  <footer class="site-footer"><div class="site-footer-inner"><p>Signed in as <%= currentUser.name %> · <%= currentUser.role %></p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore. Use fictional information only.</p></div></footer>
+<%- include('partials/footer') %>
 </body>
 </html>

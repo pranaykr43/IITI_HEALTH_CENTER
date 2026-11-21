@@ -1,9 +1,9 @@
-<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title><%= title %> · Health Centre</title><link rel="stylesheet" href="/app.css"></head>
-<body><header class="site-header"><div class="site-header-inner"><a class="brand" href="/dashboard">Health Centre</a><a class="text-link" href="/dashboard">Back to dashboard</a></div></header>
-<main class="content-shell"><div class="page-heading"><p class="section-index">Appointments</p><h1>Request an appointment</h1><p>Your request is saved for staff review. An administrator coordinates the schedule and doctor assignment.</p></div>
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'new' }) %>
+<main id="main" class="workspace"><div class="workspace-heading"><div><h1>Request an appointment</h1><p class="lede">Tell us what you need help with. An administrator assigns a doctor and a time, and your slip updates as soon as it's booked.</p></div></div>
   <section class="panel appointment-form"><p class="form-note">Use fictional information only. This independent academic demonstration is not affiliated with IIT Indore.</p>
-    <% if (error) { %><div class="form-error" role="alert"><%= error %></div><% } %>
+    <%- include('partials/flash', { errorMessage: error }) %>
     <form method="post" action="/appointments" class="form-stack">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>"><input type="hidden" name="idempotencyKey" value="<%= idempotencyKey %>">
       <fieldset class="form-section"><legend>Contact details</legend><div class="form-grid"><div class="field"><label for="phone">Phone number</label><input id="phone" name="phone" inputmode="tel" autocomplete="tel" required maxlength="24"></div><div class="field"><label for="age">Age</label><input id="age" name="age" type="number" min="0" max="130" required></div></div></fieldset>
@@ -11,4 +11,7 @@
       <div class="form-actions"><button class="button primary" type="submit">Submit appointment request</button><a href="/dashboard">Cancel</a></div>
     </form>
   </section>
-</main><footer class="site-footer"><div class="site-footer-inner"><p><a href="/">Health Centre</a></p><p>Independent academic demonstration; not affiliated with or endorsed by IIT Indore.</p></div></footer></body></html>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

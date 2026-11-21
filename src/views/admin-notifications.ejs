@@ -1,0 +1,63 @@
+<%
+  const workerAge = outboxMetrics.workerLastSeenAt ? Math.floor((Date.now() - Date.parse(outboxMetrics.workerLastSeenAt)) / 1000) : null;
+%>
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'notifications' }) %>
+<main id="main" class="workspace workspace-wide">
+  <%- include('partials/flash') %>
+  <div class="workspace-heading">
+    <div>
+      <h1>Notifications</h1>
+      <p class="lede">Every appointment change queues a notification. The worker delivers each one at least once and retries failures with increasing delays.</p>
+    </div>
+  </div>
+
+  <dl class="pulse-figures pulse-figures-panel" aria-label="Notification queue">
+    <div><dt>Waiting to send</dt><dd><%= outboxMetrics.pending %></dd></div>
+    <div><dt>Sending now</dt><dd><%= outboxMetrics.processing %></dd></div>
+    <div><dt>Retrying</dt><dd><%= outboxMetrics.failed %></dd></div>
+    <div class="<%= outboxMetrics.dead ? 'is-alert' : '' %>"><dt>Failed for good</dt><dd><%= outboxMetrics.dead %></dd></div>
+  </dl>
+  <p class="section-note">Oldest waiting: <%= outboxMetrics.oldestPendingAt ? `${outboxMetrics.oldestPendingAgeSeconds} seconds` : 'nothing waiting' %>. Worker last seen: <%= outboxMetrics.workerLastSeenAt ? `${formatDateTime(outboxMetrics.workerLastSeenAt)} (${workerAge}s ago, ${outboxMetrics.workerName})` : 'not yet' %>. Delivery currently goes to the local console adapter, not email.</p>
+
+  <section class="panel" aria-labelledby="events-title">
+    <h2 id="events-title">Latest events</h2>
+    <p class="section-note">Re-send an event that failed for good once the cause is fixed. Each event can be re-sent three times, and every re-send is recorded in the audit log with your reason.</p>
+    <% if (!outbox.length) { %>
+      <div class="empty empty-compact"><h3>No notifications yet</h3><p>They appear when appointments are requested, scheduled, completed or cancelled.</p></div>
+    <% } else { %>
+      <div class="table-wrap">
+        <table class="data-table stack-on-mobile">
+          <caption class="sr-only">Notification events, without patient details</caption>
+          <thead><tr><th scope="col">Event</th><th scope="col">Type</th><th scope="col">Status</th><th scope="col">Attempts</th><th scope="col">Last error</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody><% outbox.forEach((event) => { %><tr>
+            <td data-label="Event"><code><%= event.eventId %></code><small>Re-sent <%= event.redriveCount %> time<%= event.redriveCount === 1 ? '' : 's' %></small></td>
+            <td data-label="Type"><%= event.eventType %></td>
+            <td data-label="Status"><span class="stamp stamp-small stamp-event-<%= event.status %>"><%= event.status %></span></td>
+            <td data-label="Attempts"><%= event.attempts %></td>
+            <td data-label="Last error"><%= event.lastError || 'None' %></td>
+            <td class="row-actions"><% if (event.status === 'dead' && event.redriveCount < 3) { %>
+              <form method="post" action="/admin/notifications/<%= encodeURIComponent(event.eventId) %>/redrive" class="redrive-form">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <label class="sr-only" for="reason-<%= event.eventId %>">Reason for redriving this event</label>
+                <input id="reason-<%= event.eventId %>" name="reason" minlength="10" maxlength="500" placeholder="Why re-send? (10+ characters)" required>
+                <button class="button small secondary" type="submit">Redrive</button>
+              </form>
+            <% } %></td>
+          </tr><% }) %></tbody>
+        </table>
+      </div>
+    <% } %>
+  </section>
+
+  <section class="panel" aria-labelledby="activity-title">
+    <h2 id="activity-title">Recent deliveries and failures</h2>
+    <% if (!notificationActivity.length) { %><p class="muted">No deliveries or failures yet.</p><% } else { %>
+      <ul class="activity-list"><% notificationActivity.forEach((event) => { %><li><span class="stamp stamp-small stamp-event-<%= event.status %>"><%= event.status %></span><span><strong><%= event.eventType %></strong>, <%= event.attempts %> attempt<%= event.attempts === 1 ? '' : 's' %></span><time datetime="<%= event.deliveredAt || event.failedAt || event.createdAt %>"><%= formatDateTime(event.deliveredAt || event.failedAt || event.createdAt) %></time></li><% }) %></ul>
+    <% } %>
+  </section>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

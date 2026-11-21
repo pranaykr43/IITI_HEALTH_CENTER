@@ -4,11 +4,12 @@ const { signIn } = require('./helpers');
 test('admin provisions a patient who completes password recovery', async ({ page, browser, baseURL }) => {
   const email = `new-patient-${Date.now()}@health.local`;
   await signIn(page, 'admin');
+  await page.getByRole('link', { name: 'Accounts', exact: true }).click();
   await page.locator('#account-name').fill('Synthetic New Patient');
   await page.locator('#account-email').fill(email);
   await page.locator('#account-password').fill('Temporary-Strong-Password-77!');
-  await page.getByRole('button', { name: 'Create patient or doctor' }).click();
-  await expect(page.getByRole('status')).toContainText('patient account created');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByRole('status')).toContainText('Patient account created');
 
   const patientContext = await browser.newContext({ baseURL });
   const patientPage = await patientContext.newPage();
@@ -36,6 +37,7 @@ test('admin provisions a patient who completes password recovery', async ({ page
   await expect(patientPage.getByRole('heading', { name: 'Your appointments' })).toBeVisible();
 
   await signIn(page, 'admin');
+  await page.goto('/admin/accounts');
   const accountRow = page.locator('tr').filter({ hasText: email });
   await accountRow.getByRole('button', { name: 'Disable' }).click();
   await expect(page.locator('tr').filter({ hasText: email })).toContainText('disabled');
@@ -54,6 +56,7 @@ test('admin provisions a patient who completes password recovery', async ({ page
 test('admin redrive records a reason and preserves event attempts', async ({ page }) => {
   await page.request.post('/__e2e/reset-redrive-fixture');
   await signIn(page, 'admin');
+  await page.getByRole('link', { name: 'Notifications', exact: true }).click();
   const row = page.locator('tr').filter({ hasText: 'e2e-redrive-event' });
   await expect(row).toContainText('dead');
   await expect(row).toContainText('5');

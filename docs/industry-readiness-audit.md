@@ -24,7 +24,7 @@ All P1 items and most P2/P3 items were fixed on this branch, each with regressio
 | Check | Result |
 |---|---|
 | `npm ci` on Node 24.22.3 | Succeeds (before: failed compiling `better-sqlite3@9.6.0`) |
-| `npm test` (Node test runner) | 81/81 passing (71 at audit time + 10 for the MFA follow-up) |
+| `npm test` (Node test runner) | 86/86 passing (71 at audit time, +10 for the MFA follow-up, +5 for the dashboard/audit-log follow-up) |
 | `npm run lint` | 0 problems |
 | `npm audit` (all dependencies) | 0 vulnerabilities (before: 2 high, Playwright) |
 | `npm run demo` | Idempotent retry, 200 schedule, 409 collision, 3 events processed |
@@ -218,7 +218,7 @@ The helper clicked "Sign out" and navigated away immediately, which could cancel
 | Database | Foreign keys, CHECK constraints, WAL, `busy_timeout`, partial unique slot index, versioned optimistic concurrency, `IMMEDIATE` transactions, forward-only migrations (now v5, with indexes for sessions, schedules, audit and idempotency). |
 | Authentication | bcrypt cost 12, hashed session tokens, hashed single-use reset tokens, throttled failed logins, session revocation on disable/reset, TOTP MFA (required for staff in production). Missing: off-main-thread hashing. |
 | Google OAuth | PKCE, state bound to a browser cookie, nonce, issuer/audience/azp/expiry/email-verified checks, patient-only linking. Not exercised against a real Google project (no credentials). |
-| CSRF / XSS / SQLi | Per-session CSRF on all authenticated mutations and double-submit on anonymous forms. All EJS output escaped (no `<%-`). All SQL parameterised. Default CSP. |
+| CSRF / XSS / SQLi | Per-session CSRF on all authenticated mutations and double-submit on anonymous forms. All EJS data output escaped with `<%= %>`; unescaped `<%-` is used only for `include()` of partials. All SQL parameterised. Default CSP. |
 | Permissions | Role checks at route and service level; ownership checks for patient cancel and doctor completion. Covered by integration and e2e tests. |
 | Appointment lifecycle | Explicit transitions, idempotent creation, database-enforced no-overlap (now), time-zone-correct. |
 | Notification worker | Leases, claim-token fencing, capped exponential backoff, dead-lettering, bounded audited redrive, heartbeat. Delivery is at-least-once, and the only adapter writes to the console. |

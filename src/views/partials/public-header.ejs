@@ -1,0 +1,13 @@
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header"><div class="site-header-inner">
+  <%- include('brand') %>
+  <nav class="site-nav" aria-label="Main navigation">
+    <% if (typeof headerLink !== 'undefined' && headerLink) { %>
+      <a href="<%= headerLink.href %>"><%= headerLink.label %></a>
+    <% } else { %>
+      <a class="nav-secondary" href="/#how-it-works">How it works</a>
+      <a class="nav-secondary" href="/login">Staff sign in</a>
+      <% if (typeof currentUser !== 'undefined' && currentUser) { %><a class="nav-action" href="/dashboard">Your dashboard</a><% } else { %><a class="nav-action" href="/login/patient">Patient sign in</a><% } %>
+    <% } %>
+  </nav>
+</div></header>

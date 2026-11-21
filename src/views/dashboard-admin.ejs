@@ -1,0 +1,98 @@
+<%
+  const c = overview.counts;
+  const chart = overview.requestsByDay;
+  const chartMax = Math.max(1, ...chart.map((d) => d.count));
+  const chartTotal = chart.reduce((sum, d) => sum + d.count, 0);
+  const barWidth = 28, gap = 12, chartHeight = 120;
+  const cancelRate = c.requested30 ? Math.round((c.cancelled30 / c.requested30) * 100) : 0;
+  const upcomingByDay = [];
+  overview.upcoming.forEach((item) => {
+    const parts = clinicDateParts(item.scheduledFor);
+    const key = `${parts.weekday} ${parts.day} ${parts.month}`;
+    let group = upcomingByDay.find((g) => g.key === key);
+    if (!group) { group = { key, items: [] }; upcomingByDay.push(group); }
+    group.items.push({ ...item, time: parts.time });
+  });
+  const workerAge = outboxMetrics.workerLastSeenAt ? Math.floor((Date.now() - Date.parse(outboxMetrics.workerLastSeenAt)) / 1000) : null;
+  const workerHealthy = workerAge !== null && workerAge < 120;
+%>
+<%- include('partials/head') %>
+<body class="app">
+<%- include('partials/app-header', { activeNav: 'dashboard' }) %>
+<main id="main" class="workspace workspace-wide">
+  <%- include('partials/flash') %>
+  <div class="workspace-heading">
+    <div>
+      <h1>Scheduling desk</h1>
+      <p class="lede"><% if (c.waiting) { %><%= c.waiting %> request<%= c.waiting === 1 ? ' is' : 's are' %> waiting for a doctor and time<%= c.oldestWaitingHours !== null && c.oldestWaitingHours >= 1 ? `, the oldest for ${c.oldestWaitingHours} hour${c.oldestWaitingHours === 1 ? '' : 's'}` : '' %>.<% } else { %>Every request has been scheduled.<% } %></p>
+    </div>
+  </div>
+
+  <section class="pulse" aria-labelledby="pulse-title">
+    <h2 id="pulse-title" class="sr-only">Clinic activity</h2>
+    <dl class="pulse-figures">
+      <div><dt>Waiting</dt><dd><%= c.waiting %></dd></div>
+      <div><dt>Booked, next 7 days</dt><dd><%= c.nextSevenDays %></dd></div>
+      <div><dt>Visits recorded, 30 days</dt><dd><%= c.completed30 %></dd></div>
+      <div><dt>Cancelled or declined, 30 days</dt><dd><%= cancelRate %>%</dd></div>
+    </dl>
+    <figure class="chart">
+      <figcaption>Requests per day, last 14 days <span class="muted">(<%= chartTotal %> total)</span></figcaption>
+      <svg viewBox="0 0 <%= chart.length * (barWidth + gap) %> <%= chartHeight + 34 %>" role="img" aria-label="Bar chart of appointment requests per day over the last 14 days; <%= chartTotal %> in total, highest <%= chartMax %> in a day." preserveAspectRatio="xMidYMid meet">
+        <line x1="0" x2="<%= chart.length * (barWidth + gap) %>" y1="<%= chartHeight %>" y2="<%= chartHeight %>" class="chart-axis"/>
+        <% chart.forEach((day, i) => { const h = day.count ? Math.max(4, Math.round((day.count / chartMax) * (chartHeight - 18))) : 0; const x = i * (barWidth + gap) + gap / 2; %>
+          <% if (h) { %><rect x="<%= x %>" y="<%= chartHeight - h %>" width="<%= barWidth %>" height="<%= h %>" rx="3" class="chart-bar<%= i === chart.length - 1 ? ' is-today' : '' %>"/><text x="<%= x + barWidth / 2 %>" y="<%= chartHeight - h - 5 %>" class="chart-value" text-anchor="middle"><%= day.count %></text><% } %>
+          <text x="<%= x + barWidth / 2 %>" y="<%= chartHeight + 16 %>" class="chart-label" text-anchor="middle"><%= day.weekday.slice(0, 2) %></text>
+          <text x="<%= x + barWidth / 2 %>" y="<%= chartHeight + 29 %>" class="chart-label chart-label-sub" text-anchor="middle"><%= day.label.split(' ')[0] %></text>
+        <% }) %>
+      </svg>
+      <table class="sr-only">
+        <caption>Appointment requests per day</caption>
+        <thead><tr><th scope="col">Day</th><th scope="col">Requests</th></tr></thead>
+        <tbody><% chart.forEach((day) => { %><tr><td><%= day.weekday %> <%= day.label %></td><td><%= day.count %></td></tr><% }) %></tbody>
+      </table>
+    </figure>
+    <a class="system-health <%= outboxMetrics.dead ? 'is-alert' : workerHealthy ? 'is-ok' : 'is-warn' %>" href="/admin/notifications">
+      <span class="health-dot" aria-hidden="true"></span>
+      <span><% if (outboxMetrics.dead) { %><%= outboxMetrics.dead %> notification<%= outboxMetrics.dead === 1 ? '' : 's' %> failed and need attention<% } else if (workerHealthy) { %>Notifications are flowing; <%= outboxMetrics.pending %> waiting to send<% } else { %>Notification worker not seen recently; <%= outboxMetrics.pending %> waiting to send<% } %></span>
+    </a>
+  </section>
+
+  <div class="desk-grid">
+    <section aria-labelledby="queue-title" class="slip-section">
+      <h2 id="queue-title">Waiting for scheduling <span class="count-badge"><%= overview.queue.length %></span></h2>
+      <p class="section-note">Oldest first. Choose a doctor to see their open slots in clinic time (<%= clinicZoneLabel %>).</p>
+      <% if (overview.queue.length) { %>
+        <div class="slip-list"><% overview.queue.forEach((item) => { %><%- include('partials/slip', { item }) %><% }) %></div>
+      <% } else { %>
+        <div class="empty empty-compact"><h3>The queue is clear</h3><p>New patient requests appear here, oldest first.</p></div>
+      <% } %>
+    </section>
+
+    <aside aria-labelledby="agenda-title" class="agenda">
+      <h2 id="agenda-title">Booked visits</h2>
+      <% if (upcomingByDay.length) { %>
+        <% upcomingByDay.forEach((group) => { %>
+          <section class="agenda-day" aria-label="<%= group.key %>">
+            <h3><%= group.key %></h3>
+            <ul>
+              <% group.items.forEach((item) => { %><li data-appointment-id="<%= item.id %>"><span class="agenda-time"><%= item.time %></span><span class="agenda-who"><strong><%= item.patientName %></strong><span><%= item.doctorName %></span></span></li><% }) %>
+            </ul>
+          </section>
+        <% }) %>
+      <% } else { %>
+        <p class="muted">No upcoming visits are booked.</p>
+      <% } %>
+      <% if (overview.recent.length) { %>
+        <h2 class="agenda-subtitle">Recently closed</h2>
+        <ul class="agenda-closed">
+          <% overview.recent.slice(0, 8).forEach((item) => { %><li data-appointment-id="<%= item.id %>"><span class="stamp stamp-<%= item.status %> stamp-small"><%= { completed: 'Recorded', cancelled: 'Cancelled', rejected: 'Declined' }[item.status] %></span><span><%= item.patientName %></span></li><% }) %>
+        </ul>
+      <% } %>
+    </aside>
+  </div>
+  <div hidden data-slot-board="<%= JSON.stringify(slotBoard) %>"></div>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

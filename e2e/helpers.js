@@ -31,7 +31,11 @@ async function requestAppointment(page, phoneSuffix = Date.now()) {
   await page.getByRole('button', { name: 'Submit appointment request' }).click();
   await page.waitForURL('**/dashboard');
   await page.getByRole('status').filter({ hasText: 'Appointment requested successfully.' }).waitFor();
-  return page.locator('tbody tr').first().locator('small').innerText();
+  return page.locator('article.slip[data-appointment-id]').first().getAttribute('data-appointment-id');
+}
+
+function slip(page, id) {
+  return page.locator(`article.slip[data-appointment-id="${id}"]`);
 }
 
 // Returns a 10:30 wall-clock slot on a weekday, matching the seeded doctor's
@@ -43,4 +47,4 @@ function slotFromNow(days = 8) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T10:30`;
 }
 
-module.exports = { PASSWORD, signIn, requestAppointment, slotFromNow };
+module.exports = { PASSWORD, signIn, requestAppointment, slotFromNow, slip };

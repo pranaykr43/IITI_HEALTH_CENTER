@@ -1,5 +1,39 @@
 # Health Centre — reliable appointment coordination
 
+A campus health-centre appointment system: patients request visits, administrators book them into a doctor's open slots, and doctors record the outcome. All three see the same appointment slip from their own side. It's a server-rendered Express + SQLite app, built around correctness and security guarantees that are verified by tests rather than just described.
+
+![Scheduling desk: request pulse, 14-day chart, open-slot picker and booked visits](docs/screenshots/scheduling-desk.png)
+
+| Patient view | Patient view on mobile | Dark mode |
+|---|---|---|
+| ![Patient appointment slips with status timeline and visit summary](docs/screenshots/patient-appointments.png) | ![Mobile layout with perforated slip stub](docs/screenshots/patient-mobile.png) | ![Home page in dark mode](docs/screenshots/home-dark.png) |
+
+**Highlights**
+
+- **No double booking.** Slots are fixed-length and aligned in the clinic's time zone. A unique database index makes overlapping confirmed visits impossible, even when two administrators schedule at the same moment.
+- **Two-factor authentication.** RFC 6238 TOTP, with secrets encrypted with AES-256-GCM and a replay barrier so each code works once. Recovery codes are hashed and single-use. Staff must enrol in production.
+- **Reliable notifications.** A transactional outbox, plus a worker with leases, fencing, exponential backoff, dead-lettering and audited manual redrive.
+- **Privacy by default.**
+  - Session tokens are stored only as hashes.
+  - Notification payloads carry identifiers only, never symptoms.
+  - Expired data is purged hourly.
+  - Status messages never come from the URL.
+- **Every privileged action is audited** in the same transaction as the change, with a filterable admin audit-log viewer.
+- **Verified in three browsers.** 86 unit/integration tests and 39 Playwright runs across Chromium, Firefox and WebKit with axe accessibility checks. CI also builds and smoke-tests an ARM64 container.
+
+See [`docs/case-study.md`](docs/case-study.md) for the before-and-after engineering story, and [`docs/industry-readiness-audit.md`](docs/industry-readiness-audit.md) for the full audit.
+
+**Try it locally with realistic synthetic data:**
+
+```bash
+npm ci
+HEALTH_DEMO_PASSWORD='Choose-a-long-local-password' npm run seed:showcase
+HEALTH_DEMO_PASSWORD='Choose-a-long-local-password' npm start
+# sign in at http://127.0.0.1:3000 as admin@health.local, doctor@health.local or patient@health.local
+```
+
+## Background
+
 This project is an engineering rebuild of a student health-centre appointment prototype. The original application mixed a 1,683-line router, duplicated MongoDB connections, plaintext passwords, hard-coded SMTP credentials, free-form appointment states, and no runnable tests. The active application now focuses on the core workflow and makes its guarantees explicit:
 
 1. A patient signs in and requests an appointment.
@@ -93,6 +127,8 @@ For production-like HTTPS, set `COOKIE_SECURE=true` and terminate TLS in front o
 `npm run seed` is disabled when `NODE_ENV=production`; provision real accounts through an approved process. Production configuration rejects insecure cookies and invalid `COOKIE_SECURE` values. Run the notification worker separately with `npm run worker:notifications` when exercising the local outbox; its default adapter writes console summaries only.
 
 ### Role workflows
+
+- **Showcase data:** `npm run seed:showcase` (development only) adds four doctors, eleven patients and two weeks of synthetic history. `node scripts/capture-screenshots.js` regenerates the images in `docs/screenshots/` from a running server.
 
 - **Patient:** choose **Patient Sign In** at `/login`, or create a patient account at `/register`. Patients can request appointments and review scheduling/status and visit summaries from the dashboard. Local seeded patient credentials are also printed by `npm run seed`.
 - **Doctor:** choose **Doctor Sign In** at `/login/doctor`. Doctor accounts are provisioned by an administrator; there is no public doctor registration. Doctors can view assigned appointments and record the visit summary.

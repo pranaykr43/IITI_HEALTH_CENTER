@@ -16,7 +16,9 @@ const { createPasswordResetService } = require('../services/password-reset-servi
 const { createGoogleOAuthService } = require('../services/google-oauth-service');
 const { createHousekeepingService } = require('../services/housekeeping-service');
 const { createMfaService } = require('../services/mfa-service');
-const { formatClinicDateTime } = require('../domain/clinic-time');
+const { formatClinicDateTime, clinicDateParts } = require('../domain/clinic-time');
+const { createInsightsService } = require('../services/insights-service');
+const { createAuditService } = require('../services/audit-service');
 const { createUnconfiguredPasswordResetAdapter, createResendPasswordResetAdapter } = require('../notifications/password-reset-adapter');
 const { createRouter, wantsJson, safeEqual } = require('./routes');
 
@@ -39,6 +41,8 @@ function createApp(options = {}) {
   const appointments = createAppointmentService(db, { clinicTimeZone: config.clinicTimeZone, slotMinutes: config.slotMinutes });
   const housekeeping = createHousekeepingService(db);
   const mfa = createMfaService({ db, config, now: options.now });
+  const insights = createInsightsService(db, { clinicTimeZone: config.clinicTimeZone, slotMinutes: config.slotMinutes, now: options.now });
+  const audit = createAuditService(db);
   if (config.mfaEncryptionKeyIsDevelopmentDefault && config.nodeEnv === 'development') {
     logger.warn({ component: 'mfa' }, 'MFA_ENCRYPTION_KEY is not set; using the insecure development key');
   }
@@ -54,6 +58,8 @@ function createApp(options = {}) {
   app.locals.clinicTimeZone = config.clinicTimeZone;
   app.locals.slotMinutes = config.slotMinutes;
   app.locals.formatDateTime = (value) => formatClinicDateTime(value, config.clinicTimeZone);
+  app.locals.clinicDateParts = (value) => clinicDateParts(value, config.clinicTimeZone);
+  app.locals.clinicZoneLabel = config.clinicTimeZone === 'Asia/Kolkata' ? 'IST' : config.clinicTimeZone;
 
   app.use(helmet({
     strictTransportSecurity: config.nodeEnv === 'production' ? undefined : false,
@@ -169,7 +175,7 @@ function createApp(options = {}) {
     }
   }
 
-  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, mfa, metrics, config: routesConfig, options }));
+  app.use(createRouter({ auth, appointments, accounts, passwordResets, googleOAuth, mfa, insights, audit, metrics, config: routesConfig, options }));
 
   app.use((req, res) => {
     const error = new AppError('Route not found', 404, 'not_found');
