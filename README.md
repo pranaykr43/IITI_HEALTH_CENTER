@@ -1,266 +1,148 @@
-# Health Centre — reliable appointment coordination
+# Health Centre
 
-A campus health-centre appointment system: patients request visits, administrators book them into a doctor's open slots, and doctors record the outcome. All three see the same appointment slip from their own side. It's a server-rendered Express + SQLite app, built around correctness and security guarantees that are verified by tests rather than just described.
+An appointment booking system for a campus health centre. Patients request a visit, the centre's administrator books it into a doctor's free slot, and the doctor records the outcome after the visit. Everyone follows the same appointment from their own dashboard.
 
-![Scheduling desk: request pulse, 14-day chart, open-slot picker and booked visits](docs/screenshots/scheduling-desk.png)
+**Live demo:** https://health-center.duckdns.org (synthetic data, reset every night)
 
-| Patient view | Patient view on mobile | Dark mode |
+| Role | Email | Sign in at |
 |---|---|---|
-| ![Patient appointment slips with status timeline and visit summary](docs/screenshots/patient-appointments.png) | ![Mobile layout with perforated slip stub](docs/screenshots/patient-mobile.png) | ![Home page in dark mode](docs/screenshots/home-dark.png) |
+| Patient | `patient@health.local` | `/login/patient` |
+| Doctor | `doctor@health.local` | `/login/doctor` |
+| Administrator | `admin@health.local` | `/login/admin` |
 
-**Highlights**
+Password for all three: `REPLACE_WITH_DEMO_PASSWORD`
 
-- **No double booking.** Slots are fixed-length and aligned in the clinic's time zone. A unique database index makes overlapping confirmed visits impossible, even when two administrators schedule at the same moment.
-- **Two-factor authentication.** RFC 6238 TOTP, with secrets encrypted with AES-256-GCM and a replay barrier so each code works once. Recovery codes are hashed and single-use. Staff must enrol in production.
-- **Reliable notifications.** A transactional outbox, plus a worker with leases, fencing, exponential backoff, dead-lettering and audited manual redrive.
-- **Privacy by default.**
-  - Session tokens are stored only as hashes.
-  - Notification payloads carry identifiers only, never symptoms.
-  - Expired data is purged hourly.
-  - Status messages never come from the URL.
-- **Every privileged action is audited** in the same transaction as the change, with a filterable admin audit-log viewer.
-- **Verified in three browsers.** 87 unit/integration tests and 39 Playwright runs across Chromium, Firefox and WebKit with axe accessibility checks. CI also builds and smoke-tests an ARM64 container.
+Please don't enter real personal or medical information. This is a student project and isn't affiliated with IIT Indore.
 
-See [`docs/case-study.md`](docs/case-study.md) for the before-and-after engineering story, and [`docs/industry-readiness-audit.md`](docs/industry-readiness-audit.md) for the full audit.
+![Administrator scheduling desk](docs/screenshots/scheduling-desk.png)
 
-**Deploy it for free:** [`docs/deploy-free.md`](docs/deploy-free.md) walks through an Oracle Cloud Always Free VM plus a free DuckDNS hostname, with automatic HTTPS. After the console steps it's one command: `bash install.sh --host your-name.duckdns.org --mode showcase`.
+## What it does
 
-**Try it locally with realistic synthetic data:**
+**Patients**
+- Create an account (email and password, or Google if it's configured) and request an appointment.
+- Follow each request on an appointment slip: requested, scheduled with a doctor and time, then visit recorded.
+- Read the doctor's notes (tests, medicine, advice) after the visit.
+- Cancel a request, and optionally turn on two-factor authentication.
+
+**Doctors**
+- See today's visits, upcoming visits and past visits that still need notes.
+- Record the outcome of a visit, which the patient then sees on their slip.
+
+**Administrators**
+- Work through the queue of new requests, oldest first.
+- Pick a doctor and choose from their free slots. Booked times are greyed out, and times are always in clinic time (IST).
+- See requests per day for the last two weeks, upcoming bookings and whether notifications are being sent.
+- Create patient and doctor accounts, disable accounts, and reset a user's two-factor authentication.
+- Browse the audit log of every sensitive action.
+
+| Patient view | On a phone | Dark mode |
+|---|---|---|
+| ![Patient appointment slips](docs/screenshots/patient-appointments.png) | ![Mobile layout](docs/screenshots/patient-mobile.png) | ![Home page in dark mode](docs/screenshots/home-dark.png) |
+
+## How it works
+
+The app is a server-rendered Node.js application. Express handles the routes, EJS renders the pages, and SQLite (through `better-sqlite3`) stores everything. A small amount of plain JavaScript adds the slot picker and form niceties, and every form still works without it.
+
+A few design decisions do most of the work:
+
+- **No double booking.** Appointments use fixed 15-minute slots inside each doctor's working hours. A unique index on `(doctor, time)` means two confirmed visits can't overlap, even if two administrators book at the same moment.
+- **Clinic time everywhere.** Times entered in the browser are read as IST, whatever time zone the server runs in, and shown back in IST.
+- **Nothing is lost or duplicated.** Creating or changing an appointment writes the change, an audit record and a notification event in one database transaction. Retrying a booking request with the same key returns the original appointment instead of creating a second one.
+- **Notifications run in a separate worker.** The worker picks up notification events, retries failures with increasing delays, and parks events that keep failing so an administrator can re-send them. Right now it logs to the console; there's no email provider connected.
+- **Security.**
+  - Passwords are hashed with bcrypt, and sessions are stored only as hashes.
+  - Every form has a CSRF token, and repeated failed sign-ins are throttled.
+  - Two-factor authentication uses standard authenticator-app codes. The secrets are encrypted at rest, and each code works only once.
+  - Doctors and administrators must use two-factor authentication in production.
+
+The engineering write-up is in [docs/case-study.md](docs/case-study.md), and the full audit is in [docs/industry-readiness-audit.md](docs/industry-readiness-audit.md).
+
+## Tech stack
+
+Node.js 24, Express 4, EJS, SQLite (`better-sqlite3`), Zod for input validation, Pino for logging. Tested with Node's built-in test runner, Supertest and Playwright with axe. Deployed with Docker Compose and Caddy (automatic HTTPS), with CI on GitHub Actions.
+
+## Running it locally
+
+You need Node.js 24 or newer.
 
 ```bash
+git clone https://github.com/pranaykr43/IITI_HEALTH_CENTER.git
+cd IITI_HEALTH_CENTER
 npm ci
-HEALTH_DEMO_PASSWORD='Choose-a-long-local-password' npm run seed:showcase
-HEALTH_DEMO_PASSWORD='Choose-a-long-local-password' npm start
-# sign in at http://127.0.0.1:3000 as admin@health.local, doctor@health.local or patient@health.local
+HEALTH_DEMO_PASSWORD='pick-a-long-password' npm run seed:showcase
+HEALTH_DEMO_PASSWORD='pick-a-long-password' npm start
+```
+
+Open http://127.0.0.1:3000 and sign in with any of the demo emails above, using the password you picked. `seed:showcase` fills the database with a few doctors, patients and two weeks of sample appointments. Use `npm run seed` instead if you only want the three basic accounts.
+
+To run the notification worker as well, start it in a second terminal with `npm run worker:notifications`.
+
+Settings live in a `.env` file. Copy [example.env](example.env) to get started. Every setting is described in [docs/production-configuration.md](docs/production-configuration.md).
+
+## Tests
+
+```bash
+npm run check      # lint + unit and integration tests
+npm run test:e2e   # browser tests in Chromium, Firefox and WebKit
+```
+
+The browser tests run against a temporary database and need the Playwright browsers installed once with `npx playwright install chromium firefox webkit`. CI runs everything on every push, plus a dependency audit and a test build of the Docker image for ARM servers.
+
+## Deploying
+
+[docs/deploy-free.md](docs/deploy-free.md) shows how to host it for free on an Oracle Cloud Always Free VM, with a DuckDNS hostname and automatic HTTPS. Once the VM exists, it's one command:
+
+```bash
+bash install.sh --host your-name.duckdns.org --mode showcase
+```
+
+Use `--mode production` for a private setup with no demo accounts. Updates go through `deploy/update.sh`, which backs up the database before pulling the new version.
+
+## Useful scripts
+
+| Command | What it does |
+|---|---|
+| `npm start` / `npm run dev` | Start the web server (`dev` restarts on file changes) |
+| `npm run worker:notifications` | Start the notification worker |
+| `npm run seed` / `npm run seed:showcase` | Add demo accounts / demo accounts plus sample data (not allowed in production) |
+| `npm run admin:create` | Create the first administrator on a production server (interactive) |
+| `npm run db:backup -- <file>` | Take a checked, consistent backup of the database |
+| `npm run db:restore -- <file> --confirm-stopped` | Restore a backup (stop the app first) |
+| `npm run demo` | Run a scripted booking scenario in memory and print what happened |
+| `npm run benchmark` | Time appointment creation locally |
+
+## Project layout
+
+```
+src/
+  http/          Express app, routes, middleware
+  services/      appointments, accounts, auth, two-factor, insights, audit log
+  domain/        appointment state rules, clinic-time helpers
+  db/            schema and migrations
+  views/         EJS pages and partials
+  public/        CSS, browser script, fonts
+  workers/       notification worker
+test/            unit and integration tests
+e2e/             Playwright browser tests
+deploy/          server install, update and demo-reset scripts
+scripts/         seeding, backups, benchmarks, screenshots
+docs/            guides, audit, security review, case study
 ```
 
 ## Background
 
-This project is an engineering rebuild of a student health-centre appointment prototype. The original application mixed a 1,683-line router, duplicated MongoDB connections, plaintext passwords, hard-coded SMTP credentials, free-form appointment states, and no runnable tests. The active application now focuses on the core workflow and makes its guarantees explicit:
+This started in 2023 as a software engineering course project. That first version used MongoDB and a single 1,700-line router, compared passwords in plain text, and could book two patients into the same slot. It was later rebuilt around the guarantees described above. The old code is still in `routes/` and `views/` for reference, but the app doesn't use it.
 
-1. A patient signs in and requests an appointment.
-2. A retry with the same idempotency key returns the original request instead of creating a duplicate.
-3. An administrator schedules a doctor and time inside a transaction.
-4. The database rejects a confirmed doctor/time collision.
-5. The assigned doctor completes the appointment and records a prescription.
-6. Durable outbox events and audit entries are written with the business change.
+## More documentation
 
-The standalone `npm run worker:notifications` process claims outbox events with expiring leases, retries transient adapter errors with capped exponential backoff, and marks exhausted events `dead`. Its default adapter writes a local console summary only; no real email is sent.
+- [Free deployment guide](docs/deploy-free.md)
+- [Configuration reference](docs/production-configuration.md)
+- [Google sign-in setup](docs/google-sign-in.md)
+- [Backup and restore](docs/backup-and-restore-production.md)
+- [Security review](docs/security-review.md)
+- [Production readiness checklist](docs/production-readiness-checklist.md)
+- [Roadmap](docs/engineering-roadmap.md)
 
-Browser regression coverage uses an isolated temporary SQLite database and synthetic accounts. Run `npm run test:e2e` for the Chromium suite, `npm run test:e2e:headed` to watch it, or `npm run test:e2e:report` to open the last HTML report. The test server uses a dedicated local port and never starts the notification worker.
+## License
 
-Account management is operator-driven: an active administrator provisions patient and doctor accounts, can create a separately confirmed administrator, and can disable/reactivate accounts. Disablement revokes sessions immediately and blocks new sign-ins. Password recovery uses expiring single-use hashed tokens and the default local adapter deliberately does not deliver a link. An injectable adapter exists for tests/development; production rejects custom adapters until a provider is reviewed. Set `PUBLIC_BASE_URL` to the HTTPS application origin when configuring a future production delivery adapter.
-
-Administrators can inspect notification queue counts, pending age, attempts, worker heartbeat and recent delivery/failure activity. Manual redrive is CSRF-protected, audited with operator and reason, bounded to three redrives, and preserves the event ID and previous attempts. The local console adapter does not send email.
-
-This is a local-first engineering showcase, not a production medical-record system. It intentionally does not claim HIPAA compliance, multi-region durability, real email delivery, or exactly-once external side effects.
-
-## Why the naive version fails
-
-The legacy code sent email before inserting the appointment, compared raw passwords, trusted identity in URL parameters, accepted whole request bodies in updates, used strings such as `not yet sheduled` as state, and had no database constraint preventing double booking. Those choices make retries, concurrent requests, and partial failures unsafe.
-
-The corrected design is documented in:
-
-- [`docs/engineering-audit.md`](docs/engineering-audit.md) — evidence-backed audit of the original project.
-- [`docs/industry-readiness-audit.md`](docs/industry-readiness-audit.md) — 2026-11 audit: findings with severity, evidence, fixes and verification.
-- [`docs/security-review.md`](docs/security-review.md) — threat model, verified controls, open security risks.
-- [`docs/engineering-roadmap.md`](docs/engineering-roadmap.md) — defects vs. improvements, prioritised.
-- [`docs/production-readiness-checklist.md`](docs/production-readiness-checklist.md) — what is verified, what is missing, alert thresholds.
-- [`docs/current-engineering-review.md`](docs/current-engineering-review.md) — earlier current-state audit, ratings, residual risks, and phased next work.
-- [`docs/technical-design.md`](docs/technical-design.md) — active architecture, invariants, trade-offs, and acceptance criteria.
-- [`docs/failure-analysis.md`](docs/failure-analysis.md) — failure scenarios and honest guarantees.
-- [`docs/architecture.mmd`](docs/architecture.mmd) — Mermaid component diagram.
-
-## Architecture
-
-```mermaid
-flowchart LR
-  Browser[Accessible server-rendered UI]
-  HTTP[Express adapter\nvalidation, sessions, CSRF, RBAC]
-  Domain[Appointment service\nstate machine + idempotency]
-  DB[(SQLite\nFKs, CHECKs, WAL, unique slot index)]
-  Outbox[Transactional outbox]
-  Worker[Standalone retrying notification worker]
-  Browser --> HTTP --> Domain --> DB
-  DB --> Outbox --> Worker
-```
-
-The active code lives under `src/`. The old `routes/` and `views/` are retained as historical reference but are not mounted by `app.js`.
-
-### Guarantees
-
-- Passwords are stored as bcrypt hashes, never plaintext.
-- Sessions are persisted in SQLite and use HTTP-only, SameSite cookies.
-- Browser mutations require a session CSRF token.
-- Patient, doctor, and administrator actions are separated by server-side role checks.
-- Appointment state transitions are explicit and monotonic.
-- Idempotency is per actor and request payload; a conflicting reuse is rejected.
-- SQLite foreign keys and a partial unique index enforce relational invariants.
-- Appointment changes, audit rows, and outbox events commit atomically.
-- Notification delivery is at-least-once. The system does **not** claim exactly-once email.
-
-## Requirements
-
-- Node.js 24 or newer (CI also runs Node 26)
-- npm
-- No MongoDB, SMTP server, Redis, or other external service is required for the local demo.
-
-## Install and run
-
-```bash
-npm ci
-npm run seed
-npm start
-```
-
-Open `http://127.0.0.1:3000`. The seed command prints local-only demo credentials. The SQLite file is created at `data/health-centre.sqlite` by default; it is ignored by Git.
-
-Configuration can be copied from [`example.env`](example.env) into `.env`. The app loads `.env` on startup; `.env` is ignored by Git and must never contain credentials that are committed:
-
-```text
-PORT=3000
-HEALTH_DB_PATH=./data/health-centre.sqlite
-HEALTH_DEMO_PASSWORD=ChangeMe123!
-COOKIE_SECURE=false
-```
-
-For production-like HTTPS, set `COOKIE_SECURE=true` and terminate TLS in front of the process. Do not use the demo password outside a disposable local environment.
-
-`npm run seed` is disabled when `NODE_ENV=production`; provision real accounts through an approved process. Production configuration rejects insecure cookies and invalid `COOKIE_SECURE` values. Run the notification worker separately with `npm run worker:notifications` when exercising the local outbox; its default adapter writes console summaries only.
-
-### Role workflows
-
-- **Showcase data:** `npm run seed:showcase` (development only) adds four doctors, eleven patients and two weeks of synthetic history. `node scripts/capture-screenshots.js` regenerates the images in `docs/screenshots/` from a running server.
-
-- **Patient:** choose **Patient Sign In** at `/login`, or create a patient account at `/register`. Patients can request appointments and review scheduling/status and visit summaries from the dashboard. Local seeded patient credentials are also printed by `npm run seed`.
-- **Doctor:** choose **Doctor Sign In** at `/login/doctor`. Doctor accounts are provisioned by an administrator; there is no public doctor registration. Doctors can view assigned appointments and record the visit summary.
-- **Administrator:** choose **Administrator Sign In** at `/login/admin`. Administrator accounts are provisioned through the trusted operator workflow; there is no public administrator registration. Admins can schedule appointments, manage accounts, inspect the notification queue, and redrive dead events with a reason.
-- **Notification operator:** run `npm run worker:notifications` in a second terminal with the same `HEALTH_DB_PATH`; monitor the administrator queue view and worker heartbeat. Delivery is local console output only.
-
-### Patient Google Sign-In (optional)
-
-Email and password sign-in works without Google credentials. Google sign-in is shown only after all required environment settings are configured. It is patient-only: an OAuth response cannot assign a role, and a verified Google email can link only to an existing patient account. Doctor and administrator credentials must be provisioned by an administrator.
-
-To configure Google for local development:
-
-1. Open [Google Cloud Console](https://console.cloud.google.com/) and create/select a project.
-2. Under **Google Auth Platform** (or **APIs & Services → OAuth consent screen** in the older console), configure the app name, support email, audience, and contact email. During testing, add the Google accounts that will sign in as test users. Complete Google verification before making an external app broadly available if Google requires it.
-3. Go to **Google Auth Platform → Clients** (or **APIs & Services → Credentials → Create credentials → OAuth client ID**) and create a **Web application** client.
-4. Add the local origin `http://localhost:3000` under **Authorized JavaScript origins** and the exact callback `http://localhost:3000/auth/google/callback` under **Authorized redirect URIs**. The server flow does not send browser JavaScript to Google; the origin is included for the web client configuration.
-5. Copy the client ID and secret into a local `.env` file (never commit it), for example:
-
-   ```text
-   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
-   GOOGLE_CLIENT_SECRET=your-client-secret
-   GOOGLE_CALLBACK_URL=http://localhost:3000/auth/google/callback
-   PUBLIC_BASE_URL=http://localhost:3000
-   COOKIE_SECURE=false
-   ```
-
-6. Start the app with `npm start` and open `http://localhost:3000/login/patient`. Google sign-in requests only `openid`, `email`, and `profile`; the server verifies the ID token signature and claims with Google's maintained `google-auth-library` client.
-
-For production, create a separate Web application OAuth client. Set the production HTTPS application origin as the authorized JavaScript origin, the exact HTTPS callback (for example `https://health.example.edu/auth/google/callback`) as the authorized redirect URI, and set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`, `PUBLIC_BASE_URL`, and `COOKIE_SECURE=true` in the deployment's secret/configuration store. Never commit credentials or reuse a development client in production. Google sign-in is not production-verified until the configured callback has been exercised against the real Google project and its consent-screen requirements are complete.
-
-Seed credentials are generated for local demo use and printed at runtime; they are not checked into source. Replace them with newly provisioned accounts before sharing a demo environment.
-
-## Test and quality checks
-
-```bash
-npm run lint
-npm test
-npm run check
-npm run test:e2e
-npm audit --omit=dev
-```
-
-The tests cover the state machine, input boundaries, authentication, CSRF, role boundaries, idempotent retries, durable outbox creation, duplicate-slot rejection, atomic doctor completion, worker failures/recovery/fencing, database migration, and browser-based appointment flows, responsive layout, keyboard access, and axe checks.
-
-Playwright runs Chromium, Firefox, and WebKit projects. Install their binaries with `npx playwright install chromium firefox webkit` before local browser runs. CI installs all three.
-
-## SQLite backup and restore
-
-`npm run db:backup -- <new-backup.sqlite>` makes a WAL-consistent SQLite online backup with `better-sqlite3`'s backup API, validates integrity and schema, and refuses to overwrite an existing destination. Store backups outside the repository and protect them as sensitive data.
-
-Restore only while the web app and notification worker are stopped: `npm run db:restore -- <backup.sqlite> --confirm-stopped`. The command verifies source integrity/schema, stages and validates the restore beside the target, and writes a non-overwriting `.pre-restore-*` safety backup before replacing the configured database. The displaced original file is retained as a rollback copy. The restore command does not merge databases or overwrite the source backup.
-
-## Reproducible demonstration
-
-```bash
-npm run demo
-```
-
-The demo runs entirely in memory and prints evidence for:
-
-- an idempotent retry returning the same appointment,
-- a successful schedule,
-- a rejected duplicate doctor/time slot,
-- the number of persisted appointments, and
-- the number of outbox events processed by a synthetic demo adapter.
-
-## Benchmark
-
-```bash
-npm run benchmark
-```
-
-The command runs a deterministic appointment-service workload in isolated in-memory SQLite databases and writes raw results to `bench/results/latest.json`. Controls:
-
-```bash
-BENCHMARK_ITERATIONS=10000 BENCHMARK_RUNS=5 npm run benchmark
-```
-
-The original implementation has no runnable benchmark baseline: its test script exits 1 and the legacy runtime depends on undeclared modules and a live MongoDB instance. The benchmark therefore reports only measurements actually produced by the rebuilt implementation and states that limitation rather than inventing a comparison.
-
-`npm run benchmark:http` measures authenticated appointment requests through the Express HTTP stack against temporary file-backed SQLite databases. See [`docs/benchmark-report.md`](docs/benchmark-report.md) for the captured local results and limitations.
-
-## Legacy JSON migration
-
-The legacy appointment export can be reviewed with a read-only dry run:
-
-```bash
-npm run migrate:legacy -- --source=appointmentsdatabase.json --db=data/health-centre.sqlite
-```
-
-The importer never reads the legacy login files or migrates passwords/accounts. It considers only unscheduled appointments whose email matches an existing patient account in the target database. Scheduled rows need a verified doctor/status mapping and are left for manual review. The source file is not changed. See [`docs/legacy-json-migration.md`](docs/legacy-json-migration.md) before using `--apply`.
-
-## Operational endpoints
-
-- `GET /healthz` — process liveness.
-- `GET /readyz` — database readiness.
-- `GET /metrics` — Prometheus-format HTTP, appointment, outbox and worker-heartbeat metrics. In production it returns 404 unless `METRICS_TOKEN` (32+ characters) is set, and then requires `Authorization: Bearer <token>`.
-
-## Two-factor authentication
-
-- Any user can turn on TOTP two-factor authentication from **Security** in the dashboard header, using any standard authenticator app (QR code or manual setup key). Enrolment is confirmed with a live code and issues ten single-use recovery codes (stored hashed), and signs out the user's other sessions.
-- With `STAFF_MFA_REQUIRED=true` (the production default) doctors and administrators are sent to enrolment before they can use the app, and cannot turn it off.
-- After a correct password (or Google sign-in) the browser gets a five-minute pending sign-in, not a session, and must enter a code at `/auth/mfa`. Five wrong codes end the pending sign-in. API clients send `otp` or `recoveryCode` with `POST /api/auth/login` and receive `401 mfa_required` without one.
-- Each code works once (a per-user replay barrier), one 30-second step of clock drift is tolerated, and secrets are encrypted with `MFA_ENCRYPTION_KEY` (AES-256-GCM, required in production).
-- Administrators can **Reset 2FA** for another user who lost their device; this revokes that user's sessions and is audited.
-
-## Scheduling rules
-
-- Times typed into the scheduling form are clinic wall-clock times in `CLINIC_TIMEZONE` (default `Asia/Kolkata`) and are displayed back in that zone, regardless of the server's own time zone.
-- Appointments occupy fixed `APPOINTMENT_SLOT_MINUTES` slots (default 15) that start on a slot boundary, inside the doctor's working hours and on a working day when the doctor's availability text can be parsed (for example `Monday-Friday`). Combined with the unique `(doctor_id, scheduled_for)` index this means confirmed visits for one doctor can never overlap.
-- Disabled doctors cannot receive new appointments.
-
-## Security notes
-
-The repository originally contained a hard-coded SMTP credential and plaintext sample passwords. The active application does not use those values, and the literal has been removed from the working tree, but **it remains in public git history and must be revoked by the account owner** (see `docs/industry-readiness-audit.md`, P0-1). Legacy JSON exports are excluded by `.gitignore`; treat any local copies as sensitive.
-
-Session tokens are stored only as SHA-256 digests, failed sign-ins are throttled per client and per account, status messages are never read from the URL, and notification events carry identifiers only. See `docs/security-review.md`.
-
-## Deliberate non-goals
-
-This milestone does not add Kubernetes, Kafka, Redis, microservices, a React rewrite, or AI. Those technologies would increase operational surface without fixing the actual defects found in the original system. A future PostgreSQL adapter and a real provider-backed notification worker are more defensible next steps if scale or integration requirements justify them.
-
-## Project status
-
-The reliable appointment core is implemented and tested. Legacy features such as the original blood-donation and feedback pages are not part of the active runtime yet; they remain migration candidates rather than being presented as production-ready functionality.
-
-# Deployment preparation
-
-**Start with [docs/deploy-free.md](docs/deploy-free.md)**, the step-by-step zero-cost deployment guide with the one-command installer (`deploy/install.sh`), safe updater (`deploy/update.sh`) and showcase reset (`deploy/reset-showcase.sh`). The documents below cover the architecture and checklists in more depth.
-
-This repository includes a Docker Compose configuration for an independent **synthetic-data demo** only. It is not an official IIT Indore service and is not suitable for real medical information. Review [deployment architecture](docs/deployment-architecture.md), [Oracle setup](docs/oracle-free-tier-setup.md), [configuration](docs/production-configuration.md), [security checklist](docs/security-deployment-checklist.md), [backup and restore](docs/backup-and-restore-production.md), [operations](docs/operations-runbook.md), [hosting comparison](docs/free-hosting-comparison.md), and [go-live checklist](docs/go-live-checklist.md) before provisioning anything.
-
-No cloud resources are created by this repository. Deployment requires owner-provisioned DNS/VM and an operator-managed `.env`. Start from `production.env.example`; never commit real values. Create the initial production admin only with interactive `npm run admin:create` after startup.
+MIT. See [LICENSE](LICENSE).
