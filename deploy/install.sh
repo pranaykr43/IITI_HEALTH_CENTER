@@ -51,6 +51,16 @@ command -v sudo >/dev/null || fail 'sudo is required'
 . /etc/os-release
 [[ "${ID:-}" == ubuntu ]] || fail "This installer supports Ubuntu; found ${ID:-unknown}"
 
+mem_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo)"
+if (( mem_kb < 2000000 )) && [[ -z "$(swapon --show --noheadings)" ]]; then
+  log 'Adding 2 GB of swap (this machine has under 2 GB of RAM, e.g. the VM.Standard.E2.1.Micro shape)'
+  sudo fallocate -l 2G /swapfile
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile >/dev/null
+  sudo swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
+
 log "Checking that $HOST points at this machine"
 public_ip="$(curl -fsS --max-time 10 https://api.ipify.org || true)"
 resolved_ip="$(getent ahostsv4 "$HOST" | awk 'NR==1 {print $1}' || true)"

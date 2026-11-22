@@ -28,7 +28,7 @@ Oracle's Always Free tier currently includes Ampere A1 compute up to **2 OCPUs a
 
 1. Console → **Compute → Instances → Create instance**.
 2. **Image:** Canonical Ubuntu 24.04 (the aarch64 build is selected automatically for Ampere).
-3. **Shape:** *Change shape* → **Ampere** → `VM.Standard.A1.Flex` → **1 OCPU, 6 GB** (comfortable; you can use up to 2 / 12 for free).
+3. **Shape:** *Change shape* → **Ampere** → `VM.Standard.A1.Flex` → **1 OCPU, 6 GB** (comfortable; you can use up to 2 / 12 for free). If Ampere says *out of capacity*, the AMD `VM.Standard.E2.1.Micro` (Always Free, 1 GB RAM) also works; the installer adds 2 GB of swap automatically. Leave **Capacity type** on *On-demand*, not preemptible.
 4. **Networking:** keep the default VCN and subnet, with **Assign a public IPv4 address** ticked.
 5. **SSH keys:** *Generate a key pair for me* → **download the private key**. Keep it safe; it's the only way in.
 6. **Boot volume:** the default (about 47 GB) is fine and within the free 200 GB.
